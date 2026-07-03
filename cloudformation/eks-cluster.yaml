@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EKS Cluster + Node Group para ToggleMaster
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: toggle-master-cluster
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: ID da VPC existente
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Pelo menos 2 subnets em AZs diferentes
+  NodeInstanceType:
+    Type: String
+    Default: t3.medium
+    AllowedValues:
+      - t3.small
+      - t3.medium
+      - t3.large
+  NodeGroupDesiredSize:
+    Type: Number
+    Default: 2
+  NodeGroupMinSize:
+    Type: Number
+    Default: 1
+  NodeGroupMaxSize:
+    Type: Number
+    Default: 4
+  KubernetesVersion:
+    Type: String
+    Default: '1.33'
+    AllowedValues:
+      - '1.33'
+      - '1.34'
+      - '1.35'
+      - '1.36'
+
+Resources:
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group para o cluster EKS (additional SG dos nodes)
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 10250
+          ToPort: 10250
+          SourceSecurityGroupId: !GetAtt EKSCluster.ClusterSecurityGroupId
+          Description: Permite kubelet (logs/exec) do control plane para os nodes
+      Tags:
+        - Key: Name
+          Value: !Sub '${ClusterName}-sg'
+
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      Version: !Ref KubernetesVersion
+      RoleArn: arn:aws:iam::634115191566:role/LabRole
+      ResourcesVpcConfig:
+        SubnetIds: !Ref SubnetIds
+        SecurityGroupIds:
+          - !Ref ClusterSecurityGroup
+
+  ClusterSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    DependsOn: EKSCluster
+    Properties:
+      GroupId: !Ref ClusterSecurityGroup
+      IpProtocol: tcp
+      FromPort: 10250
+      ToPort: 10250
+      SourceSecurityGroupId: !GetAtt EKSCluster.ClusterSecurityGroupId
+      Description: Permite kubelet (logs/exec) do control plane para os nodes
+
+  NodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn: EKSCluster
+    Properties:
+      ClusterName: !Ref ClusterName
+      NodegroupName: !Sub '${ClusterName}-nodes'
+      NodeRole: arn:aws:iam::634115191566:role/LabRole
+      Subnets: !Ref SubnetIds
+      CapacityType: SPOT
+      ScalingConfig:
+        DesiredSize: !Ref NodeGroupDesiredSize
+        MinSize: !Ref NodeGroupMinSize
+        MaxSize: !Ref NodeGroupMaxSize
+      InstanceTypes:
+        - !Ref NodeInstanceType
+
+Outputs:
+  ClusterName:
+    Value: !Ref EKSCluster
+    Export:
+      Name: toggle-master-cluster-name
+  ClusterEndpoint:
+    Value: !GetAtt EKSCluster.Endpoint
+  ClusterSecurityGroupId:
+    Value: !Ref ClusterSecurityGroup
+    Description: Additional SG dos nodes (usar nos templates de RDS e ElastiCache)
+    Export:
+      Name: toggle-master-node-sg

@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SQS Queue + DynamoDB Table para ToggleMaster (analytics pipeline)
+
+Parameters:
+  QueueName:
+    Type: String
+    Default: toggle-master-queue
+  TableName:
+    Type: String
+    Default: ToggleMasterAnalytics
+
+Resources:
+  AnalyticsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref QueueName
+      VisibilityTimeout: 30
+      MessageRetentionPeriod: 345600
+
+  AnalyticsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref TableName
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+Outputs:
+  QueueUrl:
+    Value: !Ref AnalyticsQueue
+    Description: URL da fila SQS para usar em AWS_SQS_URL
+  QueueArn:
+    Value: !GetAtt AnalyticsQueue.Arn
+  TableName:
+    Value: !Ref AnalyticsTable
+  TableArn:
+    Value: !GetAtt AnalyticsTable.Arn

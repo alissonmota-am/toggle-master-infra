@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: RDS PostgreSQL para ToggleMaster
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: ID da VPC existente
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets privadas para o RDS (pelo menos 2 em AZs diferentes)
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    AllowedValues:
+      - db.t3.micro
+      - db.t3.small
+      - db.t3.medium
+  DBName:
+    Type: String
+    Default: togglemaster
+  MasterUsername:
+    Type: String
+    Default: fiap
+  MasterUserPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: Senha do banco (minimo 8 caracteres)
+
+Resources:
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets para o RDS ToggleMaster
+      SubnetIds: !Ref SubnetIds
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Acesso ao RDS somente pelo EKS
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !ImportValue toggle-master-node-sg
+          Description: Acesso dos nodes EKS ao RDS
+      Tags:
+        - Key: Name
+          Value: toggle-master-rds-sg
+
+  PostgresInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: toggle-master-db
+      Engine: postgres
+      EngineVersion: '16.9'
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: 20
+      DBName: !Ref DBName
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      PubliclyAccessible: false
+      MultiAZ: false
+      StorageType: gp3
+      DeletionProtection: false
+
+Outputs:
+  DBEndpoint:
+    Value: !GetAtt PostgresInstance.Endpoint.Address
+    Description: Endpoint do RDS para usar em DATABASE_URL
+    Export:
+      Name: toggle-master-rds-endpoint
+  DBPort:
+    Value: !GetAtt PostgresInstance.Endpoint.Port
