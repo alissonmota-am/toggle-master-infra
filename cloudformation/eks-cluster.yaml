@@ -42,12 +42,6 @@ Resources:
     Properties:
       GroupDescription: Security group para o cluster EKS (additional SG dos nodes)
       VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 10250
-          ToPort: 10250
-          SourceSecurityGroupId: !GetAtt EKSCluster.ClusterSecurityGroupId
-          Description: Permite kubelet (logs/exec) do control plane para os nodes
       Tags:
         - Key: Name
           Value: !Sub '${ClusterName}-sg'
@@ -65,7 +59,6 @@ Resources:
 
   ClusterSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
-    DependsOn: EKSCluster
     Properties:
       GroupId: !Ref ClusterSecurityGroup
       IpProtocol: tcp
@@ -98,7 +91,7 @@ Outputs:
   ClusterEndpoint:
     Value: !GetAtt EKSCluster.Endpoint
   ClusterSecurityGroupId:
-    Value: !Ref ClusterSecurityGroup
-    Description: Additional SG dos nodes (usar nos templates de RDS e ElastiCache)
+    Value: !GetAtt EKSCluster.ClusterSecurityGroupId
+    Description: Cluster SG managed (herdado pelos nodes, usar nos templates de RDS e ElastiCache)
     Export:
       Name: toggle-master-node-sg

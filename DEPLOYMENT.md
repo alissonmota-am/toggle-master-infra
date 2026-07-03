@@ -5,7 +5,6 @@
 - Acesso ao AWS Academy com Session Manager na EC2
 - Docker instalado na EC2 (`sudo yum install -y docker && sudo systemctl start docker`)
 - kubectl instalado na EC2
-- helm instalado na EC2 (`curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash`)
 - Imagens publicadas no ECR com prefixo `toggle-master/` (634115191566.dkr.ecr.us-east-1.amazonaws.com/toggle-master/<service>:latest)
 - VPC existente com subnets publicas (para NLB) e privadas (para nodes) em pelo menos 2 AZs
 - NAT Gateway configurado nas subnets privadas
@@ -17,6 +16,19 @@ As regras de Security Group sao criadas automaticamente pelos templates CloudFor
 - RDS porta 5432 ← additional SG dos nodes (via ImportValue)
 - ElastiCache porta 6379 ← additional SG dos nodes (via ImportValue)
 - Nodes porta 10250 ← cluster SG managed (no template EKS)
+
+## Sobre ConfigMaps e Secrets
+
+As variaveis de ambiente dos pods sao gerenciadas por:
+- **ConfigMap** — valores nao sensiveis (PORT, URLs de servicos internos, AWS_REGION, AWS_SQS_URL)
+- **Secret** — credenciais (DATABASE_URL, MASTER_KEY, REDIS_URL, SERVICE_API_KEY)
+
+Os deployments referenciam ambos via `envFrom` (ConfigMap) e `env.valueFrom.secretKeyRef` (Secret).
+
+Para alterar uma configuracao sem redesploiar:
+1. Editar o ConfigMap ou Secret
+2. `kubectl apply -f <arquivo>`
+3. `kubectl rollout restart deployment <nome> -n <namespace>`
 
 ## 1. Infraestrutura (CloudFormation)
 
@@ -126,7 +138,7 @@ kubectl get svc -n ingress-nginx
 
 Aguardar o EXTERNAL-IP aparecer no service `ingress-nginx-controller` (endpoint do NLB).
 
-## 6. Criar Namespaces e Aplicar Secrets
+## 6. Criar Namespaces, ConfigMaps e Secrets
 
 ### 6.1 Criar namespaces
 
@@ -138,7 +150,24 @@ kubectl apply -f evaluation-service/k8s/namespace.yaml
 kubectl apply -f analytics-service/k8s/namespace.yaml
 ```
 
-### 6.2 Atualizar os arquivos secret.yaml
+### 6.2 Atualizar os ConfigMaps
+
+Editar os arquivos `configmap.yaml` de cada servico com os valores reais obtidos no passo 2:
+
+- **evaluation-service/k8s/configmap.yaml** — `AWS_SQS_URL` com o output `QueueUrl`
+- **analytics-service/k8s/configmap.yaml** — `AWS_SQS_URL` com o output `QueueUrl`
+
+### 6.3 Aplicar os ConfigMaps
+
+```bash
+kubectl apply -f auth-service/k8s/configmap.yaml
+kubectl apply -f flag-service/k8s/configmap.yaml
+kubectl apply -f targeting-service/k8s/configmap.yaml
+kubectl apply -f evaluation-service/k8s/configmap.yaml
+kubectl apply -f analytics-service/k8s/configmap.yaml
+```
+
+### 6.4 Atualizar os arquivos secret.yaml
 
 Gerar base64 dos valores reais (usar `-w 0` para nao quebrar linha):
 
@@ -155,7 +184,7 @@ echo -n "redis://<REDIS_ENDPOINT>:6379" | base64 -w 0
 
 Substituir os valores nos arquivos `secret.yaml` de cada servico.
 
-### 6.3 Aplicar os secrets
+### 6.5 Aplicar os Secrets
 
 ```bash
 kubectl apply -f auth-service/k8s/secret.yaml
@@ -164,17 +193,7 @@ kubectl apply -f targeting-service/k8s/secret.yaml
 kubectl apply -f evaluation-service/k8s/secret.yaml
 ```
 
-## 7. Atualizar Deployments com Valores Reais
-
-Editar os arquivos de deployment antes de aplicar:
-
-**evaluation-service/k8s/deployment.yaml:**
-- `AWS_SQS_URL` → output `QueueUrl` da stack sqs-dynamodb
-
-**analytics-service/k8s/deployment.yaml:**
-- `AWS_SQS_URL` → output `QueueUrl` da stack sqs-dynamodb
-
-## 8. Deploy dos Microsservicos
+## 7. Deploy dos Microsservicos
 
 Aplicar tudo de uma vez:
 
@@ -182,7 +201,7 @@ Aplicar tudo de uma vez:
 kubectl apply -f auth-service/k8s/ -f flag-service/k8s/ -f targeting-service/k8s/ -f evaluation-service/k8s/ -f analytics-service/k8s/
 ```
 
-## 9. Verificar Deploy
+## 8. Verificar Deploy
 
 ```bash
 # Todos os pods devem estar Running
@@ -202,7 +221,7 @@ echo $NLB
 kubectl get hpa -A
 ```
 
-## 10. Criar API Key e Atualizar Secret do Evaluation
+## 9. Criar API Key e Atualizar Secret do Evaluation
 
 Apos o auth-service estar Running:
 
@@ -228,7 +247,7 @@ kubectl apply -f evaluation-service/k8s/secret.yaml
 kubectl rollout restart deployment evaluation-service -n evaluation-service
 ```
 
-## 11. Testar
+## 10. Testar
 
 ```bash
 # Auth - validar endpoint
@@ -244,21 +263,23 @@ curl -X POST http://$NLB/flags \
 curl "http://$NLB/evaluate?user_id=user-123&flag_name=enable-dashboard"
 ```
 
-## 12. Demonstrar HPA
+## 11. Demonstrar HPA
+
+O auth-service esta configurado para escalar facilmente (cpu request: 10m, threshold: 30%).
 
 ```bash
-# Observar HPA em tempo real
-kubectl get hpa -A --watch
+# Terminal 1: observar HPA em tempo real
+kubectl get hpa -n auth-service --watch
 
-# Em outro terminal, gerar carga
-kubectl run load-test --image=busybox --restart=Never -- /bin/sh -c \
-  "while true; do wget -q -O- http://evaluation-service.evaluation-service.svc.cluster.local:8004/health; done"
-
-# Apos demonstracao, remover o pod de teste
-kubectl delete pod load-test
+# Terminal 2: gerar carga com hey (instalar: sudo snap install hey)
+hey -z 120s -c 200 "http://$NLB/validate"
 ```
 
-## 13. Cleanup (IMPORTANTE - preservar budget)
+As replicas devem subir de 1 para 2, 3... conforme CPU ultrapassa 30% do request.
+
+Para escalar de volta, parar o teste e aguardar ~5 minutos (cooldown padrao do HPA).
+
+## 12. Cleanup (IMPORTANTE - preservar budget)
 
 Deletar recursos Kubernetes primeiro, depois stacks:
 
@@ -288,12 +309,9 @@ aws cloudformation wait stack-delete-complete --stack-name toggle-master-eks
 
 | Problema | Causa | Solucao |
 |----------|-------|---------|
-| ImagePullBackOff | Nome da imagem errado no ECR | Verificar `aws ecr describe-repositories` e corrigir no deployment |
-| CrashLoopBackOff | App nao conecta no RDS | Verificar secret (sslmode=require) e se o RDS esta acessivel |
-| kubectl logs/exec retorna TLS error | Regra 10250 nao aplicada | Verificar se a stack EKS criou corretamente (ClusterSecurityGroupIngress) |
+| ImagePullBackOff | Imagem nao existe no ECR | Verificar `aws ecr describe-repositories` e corrigir nome no deployment |
+| CrashLoopBackOff | Secret com valor errado (senha, endpoint) | Verificar secret com `kubectl get secret -o jsonpath` e base64 -d |
 | 503 no curl via NLB | Pod nao esta Running | `kubectl get pods -A` e resolver o pod com erro |
 | NLB sem EXTERNAL-IP | Nginx controller nao subiu | `kubectl get pods -n ingress-nginx` e verificar logs |
 | Node unhealthy no NLB | Nginx controller so tem 1 replica | `kubectl scale deployment ingress-nginx-controller -n ingress-nginx --replicas=2` |
-
-
-./hey -z 60s -c 200 http://a9fa1915cae184f0db617338874f388f-b8933616fc1286a4.elb.us-east-1.amazonaws.com/evaluate?user_id=test&flag_name=test
+| HPA nao escala | CPU muito baixa para o threshold | Aumentar concorrencia do teste ou reduzir cpu request no deployment |
