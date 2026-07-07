@@ -110,6 +110,37 @@ aws eks update-kubeconfig --name toggle-master-cluster --region us-east-1
 kubectl get nodes  # verificar se os nodes estao Ready
 ```
 
+### 3.1 Configurar acesso admin (resolve TLS error no kubectl logs/exec)
+
+O bastion host usa a mesma LabRole dos nodes. Sem essa configuracao, o EKS trata o bastion como node e bloqueia kubectl logs/exec.
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-auth
+  namespace: kube-system
+data:
+  mapRoles: |
+    - rolearn: arn:aws:iam::634115191566:role/LabRole
+      groups:
+      - system:bootstrappers
+      - system:nodes
+      username: system:node:{{EC2PrivateDNSName}}
+    - rolearn: arn:aws:iam::634115191566:role/LabRole
+      groups:
+      - system:masters
+      username: admin
+EOF
+```
+
+Verificar se funciona:
+
+```bash
+kubectl logs -n kube-system -l k8s-app=kube-proxy --tail=5
+```
+
 ## 4. Criar Bancos de Dados
 
 ```bash
@@ -117,12 +148,43 @@ kubectl get nodes  # verificar se os nodes estao Ready
 sudo yum install -y postgresql15
 
 # Executar scripts de criacao de tabelas (senha sera solicitada)
-psql -h <RDS_ENDPOINT> -U fiap -d togglemaster -f auth-service/db/init.sql
-psql -h <RDS_ENDPOINT> -U fiap -d togglemaster -f flag-service/db/init.sql
-psql -h <RDS_ENDPOINT> -U fiap -d togglemaster -f targeting-service/db/init.sql
+psql -h toggle-master-db.chr1dgso7byg.us-east-1.rds.amazonaws.com -U fiap -d togglemaster -f auth-service/db/init.sql
+psql -h toggle-master-db.chr1dgso7byg.us-east-1.rds.amazonaws.com -U fiap -d togglemaster -f flag-service/db/init.sql
+psql -h toggle-master-db.chr1dgso7byg.us-east-1.rds.amazonaws.com -U fiap -d togglemaster -f targeting-service/db/init.sql
 ```
 
 ## 5. Instalar Add-ons
+
+### 5.1 Workaround: Credenciais AWS para os Pods
+
+No AWS Academy, os pods nao conseguem acessar o IMDS (Instance Metadata Service) do node para herdar credenciais. E necessario injetar credenciais temporarias manualmente nos servicos que acessam SQS/DynamoDB.
+
+**Obter credenciais temporarias do bastion host:**
+
+```bash
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/LabRole
+```
+
+Copiar os valores de `AccessKeyId`, `SecretAccessKey` e `Token`.
+
+**Injetar nos deployments que acessam AWS (analytics-service e evaluation-service):**
+
+```bash
+kubectl set env deployment/analytics-service -n analytics-service \
+  AWS_ACCESS_KEY_ID=<AccessKeyId> \
+  AWS_SECRET_ACCESS_KEY=<SecretAccessKey> \
+  AWS_SESSION_TOKEN="<Token>"
+
+kubectl set env deployment/evaluation-service -n evaluation-service \
+  AWS_ACCESS_KEY_ID=<AccessKeyId> \
+  AWS_SECRET_ACCESS_KEY=<SecretAccessKey> \
+  AWS_SESSION_TOKEN="<Token>"
+```
+
+**Importante:** Essas credenciais expiram em ~6 horas. Se os pods pararem de funcionar, repita o processo com credenciais frescas.
+
+### 5.2 Metrics Server e Nginx Ingress Controller
 
 ```bash
 # Metrics Server (necessario para HPA funcionar)
@@ -174,12 +236,14 @@ Gerar base64 dos valores reais (usar `-w 0` para nao quebrar linha):
 ```bash
 # DATABASE_URL (usar sslmode=require para RDS)
 echo -n "postgres://fiap:<SENHA>@<RDS_ENDPOINT>:5432/togglemaster?sslmode=require" | base64 -w 0
+echo -n "postgres://fiap:bhimA123@toggle-master-db.chr1dgso7byg.us-east-1.rds.amazonaws.com:5432/togglemaster?sslmode=require" | base64 -w 0
+
 
 # MASTER_KEY
 echo -n "admin-secreto-123" | base64 -w 0
 
 # REDIS_URL
-echo -n "redis://<REDIS_ENDPOINT>:6379" | base64 -w 0
+echo -n "redis://toggle-master-redis.p56ynu.0001.use1.cache.amazonaws.com:6379" | base64 -w 0
 ```
 
 Substituir os valores nos arquivos `secret.yaml` de cada servico.
