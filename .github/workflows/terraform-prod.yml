@@ -1,15 +1,15 @@
-name: Terraform - Prod
+name: Terraform Prod - Platform
 
 on:
   push:
     branches: [main]
     paths:
-      - 'platform-prod/**'
+      - 'platform/**'
       - 'modules/**'
   pull_request:
     branches: [main]
     paths:
-      - 'platform-prod/**'
+      - 'platform/**'
       - 'modules/**'
   workflow_dispatch:
 
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: platform-prod
+        working-directory: platform
 
     steps:
       - name: Checkout
@@ -42,13 +42,13 @@ jobs:
         run: terraform validate
 
       - name: Terraform Plan
-        run: terraform plan -out=tfplan
+        run: terraform plan -var-file=environments/prod.tfvars -out=tfplan
 
       - name: Upload Plan
         uses: actions/upload-artifact@v4
         with:
           name: tfplan-prod
-          path: platform-prod/tfplan
+          path: platform/tfplan
 
   apply:
     name: Terraform Apply (prod)
@@ -57,7 +57,7 @@ jobs:
     if: github.event_name == 'push'
     defaults:
       run:
-        working-directory: platform-prod
+        working-directory: platform
 
     steps:
       - name: Checkout
@@ -72,7 +72,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan-prod
-          path: platform-prod
+          path: platform
 
       - name: Terraform Init
         run: terraform init

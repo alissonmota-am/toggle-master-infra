@@ -1,15 +1,15 @@
-name: Terraform - Dev
+name: Terraform Dev - Platform
 
 on:
   push:
-    branches: [dev]
+    branches: [develop]
     paths:
-      - 'platform-dev/**'
+      - 'platform/**'
       - 'modules/**'
   pull_request:
-    branches: [dev]
+    branches: [develop]
     paths:
-      - 'platform-dev/**'
+      - 'platform/**'
       - 'modules/**'
   workflow_dispatch:
 
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: platform-dev
+        working-directory: platform
 
     steps:
       - name: Checkout
@@ -42,13 +42,13 @@ jobs:
         run: terraform validate
 
       - name: Terraform Plan
-        run: terraform plan -out=tfplan
+        run: terraform plan -var-file=environments/dev.tfvars -out=tfplan
 
       - name: Upload Plan
         uses: actions/upload-artifact@v4
         with:
           name: tfplan-dev
-          path: platform-dev/tfplan
+          path: platform/tfplan
 
   apply:
     name: Terraform Apply (dev)
@@ -57,7 +57,7 @@ jobs:
     if: github.event_name == 'push'
     defaults:
       run:
-        working-directory: platform-dev
+        working-directory: platform
 
     steps:
       - name: Checkout
@@ -72,7 +72,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan-dev
-          path: platform-dev
+          path: platform
 
       - name: Terraform Init
         run: terraform init
