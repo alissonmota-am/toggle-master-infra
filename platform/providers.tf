@@ -7,6 +7,11 @@ terraform {
       version = "~> 5.0"
     }
   }
+
+  backend "s3" {
+    bucket = "toggle-master-terraform-state-103568492404"
+    region = "us-east-1"
+  }
 }
 
 provider "aws" {
