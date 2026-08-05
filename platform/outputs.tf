@@ -25,6 +25,11 @@ output "eks_cluster_endpoint" {
   value       = module.eks.cluster_endpoint
 }
 
+output "eks_cluster_certificate_authority" {
+  description = "Certificate authority data do cluster EKS"
+  value       = module.eks.cluster_certificate_authority
+}
+
 output "eks_node_security_group_id" {
   description = "Security Group ID dos nodes do EKS (usar como source nos SGs de RDS e Redis)"
   value       = module.eks.node_security_group_id

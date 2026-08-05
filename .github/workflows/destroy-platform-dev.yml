@@ -1,0 +1,37 @@
+name: Destroy Dev - Platform
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Digite 'destroy' para confirmar a destruicao da plataforma de dev"
+        required: true
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+
+jobs:
+  destroy:
+    name: Terraform Destroy (platform dev)
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'destroy'
+    defaults:
+      run:
+        working-directory: platform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.0
+
+      - name: Terraform Init
+        run: terraform init -backend-config="key=platform/dev/terraform.tfstate"
+
+      - name: Terraform Destroy
+        run: terraform destroy -var-file=environments/dev.tfvars -auto-approve
