@@ -28,3 +28,13 @@ module "eks" {
   node_max_size      = var.eks_node_max_size
   node_capacity_type = var.eks_node_capacity_type
 }
+
+################################################################################
+# ECR
+################################################################################
+module "ecr" {
+  source = "../modules/ecr"
+
+  project_name  = var.project_name
+  service_names = var.service_names
+}

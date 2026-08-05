@@ -15,3 +15,6 @@ eks_node_min_size      = 1
 eks_node_max_size      = 4
 eks_node_capacity_type = "SPOT"
 lab_role_arn           = "arn:aws:iam::103568492404:role/LabRole"
+
+# ECR
+service_names = ["auth-service", "flag-service", "targeting-service", "evaluation-service", "analytics-service"]

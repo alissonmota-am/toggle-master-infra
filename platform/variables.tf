@@ -64,3 +64,9 @@ variable "lab_role_arn" {
   description = "ARN da IAM Role (LabRole no AWS Academy)"
   type        = string
 }
+
+# ECR
+variable "service_names" {
+  description = "Lista de nomes dos microsservicos para criar repositorios ECR"
+  type        = list(string)
+}

@@ -29,3 +29,9 @@ output "eks_node_security_group_id" {
   description = "Security Group ID dos nodes do EKS (usar como source nos SGs de RDS e Redis)"
   value       = module.eks.node_security_group_id
 }
+
+# ECR
+output "ecr_repository_urls" {
+  description = "URLs dos repositorios ECR por servico"
+  value       = module.ecr.repository_urls
+}
