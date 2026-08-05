@@ -29,28 +29,26 @@ resource "helm_release" "argocd" {
 }
 
 ################################################################################
-# ArgoCD Applications
+# ArgoCD Applications via Helm (chart argocd-apps)
 ################################################################################
-resource "kubernetes_manifest" "applications" {
-  for_each = { for app in var.applications : app.name => app }
+resource "helm_release" "applications" {
+  name       = "argocd-apps"
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argocd-apps"
+  version    = "2.0.2"
+  namespace  = var.namespace
 
-  manifest = {
-    apiVersion = "argoproj.io/v1alpha1"
-    kind       = "Application"
-    metadata = {
-      name      = each.value.name
-      namespace = var.namespace
-    }
-    spec = {
+  values = [yamlencode({
+    applications = { for app in var.applications : app.name => {
       project = "default"
       source = {
-        repoURL        = each.value.repo_url
-        targetRevision = each.value.branch
-        path           = each.value.path
+        repoURL        = app.repo_url
+        targetRevision = app.branch
+        path           = app.path
       }
       destination = {
         server    = "https://kubernetes.default.svc"
-        namespace = each.value.namespace
+        namespace = app.namespace
       }
       syncPolicy = {
         automated = {
@@ -58,8 +56,8 @@ resource "kubernetes_manifest" "applications" {
           selfHeal = true
         }
       }
-    }
-  }
+    }}
+  })]
 
   depends_on = [helm_release.argocd]
 }
