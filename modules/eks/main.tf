@@ -49,6 +49,27 @@ resource "aws_eks_cluster" "this" {
 }
 
 ################################################################################
+# EKS Access Entry — permite LabRole acessar o cluster como admin
+################################################################################
+resource "aws_eks_access_entry" "admin" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.role_arn
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "admin" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.role_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.admin]
+}
+
+################################################################################
 # EKS Node Group
 ################################################################################
 resource "aws_eks_node_group" "this" {
