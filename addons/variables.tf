@@ -42,3 +42,9 @@ variable "argocd_applications" {
     branch     = string
   }))
 }
+
+# External Secrets
+variable "external_secrets_chart_version" {
+  description = "Versao do Helm chart do External Secrets Operator"
+  type        = string
+}

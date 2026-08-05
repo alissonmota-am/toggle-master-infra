@@ -50,3 +50,6 @@ argocd_applications = [
     branch     = "develop"
   }
 ]
+
+# External Secrets
+external_secrets_chart_version = "0.9.20"

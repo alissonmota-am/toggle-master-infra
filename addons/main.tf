@@ -25,3 +25,13 @@ module "argocd" {
   chart_version = var.argocd_chart_version
   applications  = var.argocd_applications
 }
+
+################################################################################
+# External Secrets Operator
+################################################################################
+module "external_secrets" {
+  source = "../modules/external_secrets"
+
+  chart_version = var.external_secrets_chart_version
+  aws_region    = var.aws_region
+}
