@@ -70,3 +70,8 @@ variable "service_names" {
   description = "Lista de nomes dos microsservicos para criar repositorios ECR"
   type        = list(string)
 }
+
+variable "voclabs_role_arn" {
+  description = "ARN da role voclabs (AWS Academy)"
+  type        = string
+}

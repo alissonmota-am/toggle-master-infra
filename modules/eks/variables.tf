@@ -47,3 +47,8 @@ variable "node_capacity_type" {
   description = "Tipo de capacidade (ON_DEMAND ou SPOT)"
   type        = string
 }
+
+variable "voclabs_role_arn" {
+  description = "ARN da role voclabs (AWS Academy - usada pelas credenciais temporarias)"
+  type        = string
+}

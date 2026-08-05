@@ -27,6 +27,7 @@ module "eks" {
   node_min_size      = var.eks_node_min_size
   node_max_size      = var.eks_node_max_size
   node_capacity_type = var.eks_node_capacity_type
+  voclabs_role_arn   = var.voclabs_role_arn
 }
 
 ################################################################################

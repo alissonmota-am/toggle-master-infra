@@ -70,6 +70,27 @@ resource "aws_eks_access_policy_association" "admin" {
 }
 
 ################################################################################
+# EKS Access Entry — permite voclabs (AWS Academy) acessar o cluster
+################################################################################
+resource "aws_eks_access_entry" "voclabs" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.voclabs_role_arn
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "voclabs" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.voclabs_role_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.voclabs]
+}
+
+################################################################################
 # EKS Node Group
 ################################################################################
 resource "aws_eks_node_group" "this" {

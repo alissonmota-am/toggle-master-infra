@@ -18,3 +18,6 @@ lab_role_arn           = "arn:aws:iam::103568492404:role/LabRole"
 
 # ECR
 service_names = ["auth-service", "flag-service", "targeting-service", "evaluation-service", "analytics-service"]
+
+# AWS Academy voclabs role
+voclabs_role_arn = "arn:aws:iam::103568492404:role/voclabs"
