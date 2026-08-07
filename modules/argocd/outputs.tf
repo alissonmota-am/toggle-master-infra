@@ -1,4 +1,4 @@
 output "namespace" {
   description = "Namespace onde o ArgoCD foi instalado"
-  value       = helm_release.argocd.namespace
+  value       = kubernetes_namespace.argocd.metadata[0].name
 }

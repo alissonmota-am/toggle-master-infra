@@ -7,4 +7,5 @@ resource "helm_release" "metrics_server" {
   chart      = "metrics-server"
   version    = var.chart_version
   namespace  = "kube-system"
+  wait       = false
 }
