@@ -5,47 +5,37 @@
 - Conta AWS Academy ativa com sessao iniciada
 - Bucket S3 `toggle-master-terraform-state-103568492404` criado (bootstrap manual, feito uma vez)
 - Repositorios GitHub com branch `develop` atualizada
-- Docker instalado (para builds locais, se necessario)
+- GitHub CLI (`gh`) autenticado localmente
+- `kubectl` instalado
 
 ## 1. Configurar Secrets nos Repositorios GitHub
 
-### 1.1 Todos os repositorios (6 repos)
+### 1.1 Atualizar credenciais AWS (todos os repos)
 
-Settings → Secrets and variables → Actions → New repository secret:
+Atualizar o arquivo `~/.aws/credentials` com as novas credenciais do Academy e rodar:
 
-| Secret | Valor |
-|--------|-------|
-| `AWS_ACCESS_KEY_ID` | Da sessao AWS Academy |
-| `AWS_SECRET_ACCESS_KEY` | Da sessao AWS Academy |
-| `AWS_SESSION_TOKEN` | Da sessao AWS Academy |
+```bash
+./update-secrets.sh
+```
 
-Repositorios:
-- toggle-master-infra
-- auth-service
-- flag-service
-- targeting-service
-- evaluation-service
-- analytics-service
+Isso atualiza `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e `AWS_SESSION_TOKEN` nos 6 repositorios.
 
-### 1.2 Repositorios com RDS (adicionalmente)
+### 1.2 Secrets adicionais (configurar uma vez)
 
-| Secret | Valor |
-|--------|-------|
-| `DB_PASSWORD` | Senha do banco (minimo 8 caracteres) |
-
-Repositorios:
-- auth-service
-- flag-service
-- targeting-service
+| Repositorio | Secret | Descricao |
+|-------------|--------|-----------|
+| auth-service | `DB_PASSWORD` | Senha do banco RDS |
+| auth-service | `MASTER_KEY` | Chave admin para gerar API keys |
+| flag-service | `DB_PASSWORD` | Senha do banco RDS |
+| targeting-service | `DB_PASSWORD` | Senha do banco RDS |
 
 ## 2. Criar Infraestrutura Base (Platform)
 
-### 2.1 Disparar workflow da plataforma
+Disparar workflow via GitHub CLI:
 
-No repositorio `toggle-master-infra`:
-- Actions → **Terraform Dev - Platform** → Run workflow → branch `develop`
-
-Ou fazer push com alteracao em `platform/` na branch `develop`.
+```bash
+gh workflow run "Terraform Dev - Platform" --repo alissonmota-am/toggle-master-infra --ref develop
+```
 
 Recursos criados:
 - VPC (subnets publicas/privadas, NAT, IGW)
@@ -55,147 +45,205 @@ Recursos criados:
 
 Tempo estimado: ~15-20 minutos
 
-### 2.2 Validar cluster
+### 2.1 Validar cluster
 
 ```bash
 aws eks update-kubeconfig --name toggle-master-dev-cluster --region us-east-1 --profile academy
 kubectl get nodes
 ```
 
-Deve mostrar 2 nodes com status `Ready`.
-
 ## 3. Instalar Addons no Cluster
 
-### 3.1 Disparar workflow de addons
-
-No repositorio `toggle-master-infra`:
-- Actions → **Terraform Dev - Addons** → Run workflow → branch `develop`
-
-Ou fazer push com alteracao em `addons/` na branch `develop`.
+```bash
+gh workflow run "Terraform Dev - Addons" --repo alissonmota-am/toggle-master-infra --ref develop
+```
 
 Recursos instalados:
 - ArgoCD (GitOps controller)
 - Nginx Ingress Controller (LoadBalancer)
 - Metrics Server (HPA)
-- External Secrets Operator (sincroniza secrets do AWS Secrets Manager)
+- External Secrets Operator
 
 Tempo estimado: ~5 minutos
+
+### 3.1 Criar secret de credenciais AWS no cluster
+
+O External Secrets Operator precisa de credenciais pra acessar o Secrets Manager:
+
+```bash
+AWS_PROFILE=academy kubectl create secret generic aws-credentials -n external-secrets \
+  --from-literal=access-key=$(awk '/\[academy\]/,0' ~/.aws/credentials | grep aws_access_key_id | head -1 | cut -d= -f2 | tr -d ' ') \
+  --from-literal=secret-access-key="$(awk '/\[academy\]/,0' ~/.aws/credentials | grep aws_secret_access_key | head -1 | cut -d= -f2- | tr -d ' ')" \
+  --from-literal=session-token="$(awk '/\[academy\]/,0' ~/.aws/credentials | grep aws_session_token | head -1 | cut -d= -f2- | tr -d ' ')"
+```
+
+**Nota:** Esse secret precisa ser recriado quando a sessao do Academy expirar.
 
 ### 3.2 Validar addons
 
 ```bash
 kubectl get pods -n argocd
 kubectl get pods -n ingress-nginx
-kubectl get pods -n kube-system | grep metrics
 kubectl get pods -n external-secrets
+kubectl get clustersecretstore
 ```
 
-Todos devem estar `Running`.
+O `ClusterSecretStore` deve estar `Valid` e `Ready: True`.
 
 ## 4. Criar Infraestrutura dos Microsservicos
 
-### 4.1 Disparar workflows de Terraform em cada servico
+Disparar workflows de Terraform em cada servico:
 
-Para cada microsservico, disparar o workflow **Terraform Dev** via:
-- Push com alteracao em `infra/` na branch `develop`
-- Ou re-run de execucao anterior
+```bash
+gh workflow run "Terraform Dev - Auth Service" --repo alissonmota-am/auth-service --ref develop
+gh workflow run "Terraform Dev - Flag Service" --repo alissonmota-am/flag-service --ref develop
+gh workflow run "Terraform Dev - Targeting Service" --repo alissonmota-am/targeting-service --ref develop
+gh workflow run "Terraform Dev - Evaluation Service" --repo alissonmota-am/evaluation-service --ref develop
+gh workflow run "Terraform Dev - Analytics Service" --repo alissonmota-am/analytics-service --ref develop
+```
 
-Ordem sugerida (pode ser paralelo):
-1. auth-service → cria RDS + secret no Secrets Manager
-2. flag-service → cria RDS + secret no Secrets Manager
-3. targeting-service → cria RDS + secret no Secrets Manager
-4. evaluation-service → cria ElastiCache Redis
-5. analytics-service → cria SQS + DynamoDB
+Recursos criados por servico:
+- auth-service → RDS + secrets (database-url, master-key) no Secrets Manager
+- flag-service → RDS + secret (database-url) no Secrets Manager
+- targeting-service → RDS + secret (database-url) no Secrets Manager
+- evaluation-service → ElastiCache Redis + secret (redis-url) no Secrets Manager
+- analytics-service → SQS + DynamoDB
 
 Tempo estimado: ~10-15 minutos por RDS, ~5 minutos para Redis/SQS
 
-### 4.2 Validar recursos criados
-
-```bash
-aws rds describe-db-instances --profile academy --query "DBInstances[].DBInstanceIdentifier"
-aws elasticache describe-cache-clusters --profile academy --query "CacheClusters[].CacheClusterId"
-aws sqs list-queues --profile academy
-```
-
 ## 5. Inicializar Bancos de Dados
 
-Executar os scripts de inicializacao de schema (antes do deploy dos pods):
+Executar via Jobs no cluster (RDS nao e acessivel externamente):
 
 ```bash
-RDS_AUTH=$(aws secretsmanager get-secret-value --secret-id auth-service-dev/database-url --profile academy --query SecretString --output text)
-RDS_FLAG=$(aws secretsmanager get-secret-value --secret-id flag-service-dev/database-url --profile academy --query SecretString --output text)
-RDS_TARGETING=$(aws secretsmanager get-secret-value --secret-id targeting-service-dev/database-url --profile academy --query SecretString --output text)
-
-psql "$RDS_AUTH" -f auth-service/db/init.sql
-psql "$RDS_FLAG" -f flag-service/db/init.sql
-psql "$RDS_TARGETING" -f targeting-service/db/init.sql
+AWS_PROFILE=academy kubectl apply -f - <<'EOF'
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-init-auth
+spec:
+  template:
+    spec:
+      containers:
+      - name: psql
+        image: postgres:16
+        env:
+        - name: PGPASSWORD
+          value: "<DB_PASSWORD>"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          psql -h auth-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d auth_db -f- <<SQL
+          CREATE TABLE IF NOT EXISTS api_keys (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, key_hash VARCHAR(64) NOT NULL UNIQUE, is_active BOOLEAN DEFAULT true, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
+          SQL
+      restartPolicy: Never
+  backoffLimit: 1
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-init-flag
+spec:
+  template:
+    spec:
+      containers:
+      - name: psql
+        image: postgres:16
+        env:
+        - name: PGPASSWORD
+          value: "<DB_PASSWORD>"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          psql -h flag-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d flag_db -f- <<SQL
+          CREATE TABLE IF NOT EXISTS flags (id SERIAL PRIMARY KEY, name VARCHAR(100) UNIQUE NOT NULL, description TEXT, is_enabled BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
+          CREATE OR REPLACE FUNCTION trigger_set_timestamp() RETURNS TRIGGER AS \$\$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END; \$\$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS set_timestamp ON flags;
+          CREATE TRIGGER set_timestamp BEFORE UPDATE ON flags FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+          SQL
+      restartPolicy: Never
+  backoffLimit: 1
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-init-targeting
+spec:
+  template:
+    spec:
+      containers:
+      - name: psql
+        image: postgres:16
+        env:
+        - name: PGPASSWORD
+          value: "<DB_PASSWORD>"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          psql -h targeting-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d targeting_db -f- <<SQL
+          CREATE TABLE IF NOT EXISTS targeting_rules (id SERIAL PRIMARY KEY, flag_name VARCHAR(100) UNIQUE NOT NULL, is_enabled BOOLEAN NOT NULL DEFAULT true, rules JSONB NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
+          CREATE OR REPLACE FUNCTION trigger_set_timestamp() RETURNS TRIGGER AS \$\$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END; \$\$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS set_timestamp ON targeting_rules;
+          CREATE TRIGGER set_timestamp BEFORE UPDATE ON targeting_rules FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+          SQL
+      restartPolicy: Never
+  backoffLimit: 1
+EOF
 ```
 
-## 6. Build das Imagens Docker
-
-### 6.1 Disparar workflows de build
-
-Para cada microsservico, disparar o workflow **Build & Push** via:
-- Push com alteracao no codigo (fora de `infra/`, `k8s/`, `.github/workflows/terraform-*`)
-- Ou Run workflow manualmente (se disponivel na main)
-
-Repositorios:
-1. auth-service
-2. flag-service
-3. targeting-service
-4. evaluation-service
-5. analytics-service
-
-### 6.2 Validar imagens no ECR
+Substituir `<DB_PASSWORD>` e `<RDS_SUFFIX>` pelos valores reais. Verificar com:
 
 ```bash
-aws ecr list-images --repository-name toggle-master-dev/auth-service --profile academy
-aws ecr list-images --repository-name toggle-master-dev/flag-service --profile academy
-aws ecr list-images --repository-name toggle-master-dev/targeting-service --profile academy
-aws ecr list-images --repository-name toggle-master-dev/evaluation-service --profile academy
-aws ecr list-images --repository-name toggle-master-dev/analytics-service --profile academy
+kubectl get jobs
+kubectl delete jobs db-init-auth db-init-flag db-init-targeting
 ```
 
-## 7. ArgoCD Aplica os Manifests
+## 6. Builds e Deploy (Automatico)
 
-O ArgoCD ja esta monitorando a pasta `k8s/` de cada repositorio (branch `develop`).
-Apos o build, ele detecta os manifests e aplica automaticamente:
-- Namespaces
-- Deployments (com imagem do ECR)
-- Services
-- ConfigMaps
-- ExternalSecrets (cria K8s Secrets via Secrets Manager)
-- Ingress
-- HPA
+O push de codigo nos microsservicos dispara automaticamente:
+1. **GitHub Actions** → build da imagem + push pro ECR + atualiza tag no `k8s/deployment.yaml`
+2. **ArgoCD** → detecta mudanca no `k8s/` → aplica no cluster
 
-Polling interval: ~3 minutos. Para forcar sync imediato:
+Para forcar build sem alterar codigo:
 
 ```bash
-kubectl get applications -n argocd
+gh workflow run "Build & Push - Auth Service" --repo alissonmota-am/auth-service --ref develop
+gh workflow run "Build & Push - Flag Service" --repo alissonmota-am/flag-service --ref develop
+gh workflow run "Build & Push - Targeting Service" --repo alissonmota-am/targeting-service --ref develop
+gh workflow run "Build & Push - Evaluation Service" --repo alissonmota-am/evaluation-service --ref develop
+gh workflow run "Build & Push - Analytics Service" --repo alissonmota-am/analytics-service --ref develop
 ```
 
-### 7.1 Validar pods rodando
+## 7. Gerar SERVICE_API_KEY (pos-deploy)
 
-```bash
-kubectl get pods -A
-```
-
-Todos os microsservicos devem estar com status `Running` (1/1 Ready).
-
-### 7.2 Validar ingress e acesso externo
-
-```bash
-kubectl get svc -n ingress-nginx
-```
-
-O EXTERNAL-IP do `ingress-nginx-controller` e o endpoint publico (NLB).
+Apos o auth-service estar rodando, gerar a API key e salvar no Secrets Manager:
 
 ```bash
 NLB=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-curl http://$NLB/health
+
+# Gerar API key
+API_KEY=$(curl -s -X POST http://$NLB/admin/keys \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer admin-secreto-123" \
+  -d '{"name": "evaluation-service-key"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['key'])")
+
+echo "API Key: $API_KEY"
+
+# Salvar no Secrets Manager
+aws secretsmanager create-secret \
+  --name evaluation-service-dev/service-api-key \
+  --secret-string "$API_KEY" \
+  --region us-east-1 \
+  --profile academy
 ```
 
-## 8. Teste Final
+Depois, atualizar o ExternalSecret do evaluation-service para incluir `SERVICE_API_KEY` e forcar sync:
+
+```bash
+kubectl annotate externalsecret evaluation-service-secret -n evaluation-service force-sync=$(date +%s) --overwrite
+```
+
+## 8. Validacao Final
 
 ```bash
 NLB=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
@@ -203,13 +251,7 @@ NLB=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.s
 # Health checks
 curl http://$NLB/health
 
-# Criar API key
-curl -X POST http://$NLB/admin/keys \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <MASTER_KEY>" \
-  -d '{"name": "test-key"}'
-
-# Criar flag
+# Testar flag
 curl -X POST http://$NLB/flags \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <API_KEY>" \
@@ -219,32 +261,39 @@ curl -X POST http://$NLB/flags \
 curl "http://$NLB/evaluate?user_id=user-123&flag_name=enable-dashboard"
 ```
 
-## Destruir Ambiente (evitar cobrancas)
+## 9. Forcar Sync dos External Secrets
+
+Se um secret foi criado/atualizado no Secrets Manager e o pod nao atualizou (refresh interval de 1h):
+
+```bash
+kubectl annotate externalsecret <nome> -n <namespace> force-sync=$(date +%s) --overwrite
+```
+
+## Destruir Ambiente
 
 Ordem obrigatoria (inversa da criacao):
 
 ### 1. Destruir infra dos microsservicos
 
-Para cada microsservico, executar workflow de destroy ou rodar localmente:
 ```bash
-cd <service>/infra
-terraform init -backend-config="key=<service>/dev/terraform.tfstate"
-terraform destroy -var-file=environments/dev.tfvars -var="db_password=<senha>"
+gh workflow run "Terraform Dev - Auth Service" --repo alissonmota-am/auth-service --ref develop
+# (usar workflow de destroy quando disponivel, ou rodar localmente)
 ```
 
 ### 2. Destruir addons
 
-No repositorio `toggle-master-infra`:
+No repositorio toggle-master-infra:
 - Actions → **Destroy Dev - Addons** → Run workflow → digitar "destroy"
 
 ### 3. Destruir plataforma
 
-No repositorio `toggle-master-infra`:
+No repositorio toggle-master-infra:
 - Actions → **Destroy Dev - Platform** → Run workflow → digitar "destroy"
 
 ## Notas Importantes
 
-- Credenciais do AWS Academy expiram em ~4 horas. Atualize os secrets do GitHub quando expirar.
+- Credenciais do AWS Academy expiram em ~4 horas. Rodar `./update-secrets.sh` e recriar o secret `aws-credentials` no cluster.
 - O ArgoCD faz polling a cada ~3 minutos. Mudancas no `k8s/` podem levar ate 3 min pra refletir.
-- Se um pod ficar em `ImagePullBackOff`, verifique se o build foi feito e se o nome da imagem no deployment.yaml bate com o ECR.
-- O External Secrets Operator precisa que o pod tenha credenciais AWS (via IRSA ou env vars) pra acessar o Secrets Manager.
+- O External Secrets Operator tem `refreshInterval: 1h`. Usar annotation `force-sync` pra forcar.
+- O Metrics Server pode nao funcionar no AWS Academy (limitacao de certificados kubelet).
+- O `SERVICE_API_KEY` do evaluation-service e um passo manual pos-deploy (depende do auth-service estar rodando).
