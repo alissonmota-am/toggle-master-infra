@@ -9,27 +9,9 @@ resource "helm_release" "external_secrets" {
   namespace  = "external-secrets"
 
   create_namespace = true
-}
 
-################################################################################
-# ClusterSecretStore — conecta no AWS Secrets Manager
-################################################################################
-resource "kubernetes_manifest" "cluster_secret_store" {
-  manifest = {
-    apiVersion = "external-secrets.io/v1beta1"
-    kind       = "ClusterSecretStore"
-    metadata = {
-      name = "aws-secrets-manager"
-    }
-    spec = {
-      provider = {
-        aws = {
-          service = "SecretsManager"
-          region  = var.aws_region
-        }
-      }
-    }
+  set {
+    name  = "installCRDs"
+    value = "true"
   }
-
-  depends_on = [helm_release.external_secrets]
 }

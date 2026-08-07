@@ -15,6 +15,13 @@ argocd_chart_version = "7.3.11"
 
 argocd_applications = [
   {
+    name       = "cluster-base"
+    repo_url   = "https://github.com/alissonmota-am/toggle-master-infra.git"
+    path       = "k8s-base"
+    namespace  = "external-secrets"
+    branch     = "develop"
+  },
+  {
     name       = "auth-service"
     repo_url   = "https://github.com/alissonmota-am/auth-service.git"
     path       = "k8s"
