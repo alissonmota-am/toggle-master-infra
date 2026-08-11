@@ -113,90 +113,19 @@ Tempo estimado: ~10-15 minutos por RDS, ~5 minutos para Redis/SQS
 
 ## 5. Inicializar Bancos de Dados
 
-Executar via Jobs no cluster (RDS nao e acessivel externamente):
+Conectar na instancia EC2 bastion (via Session Manager) que tem acesso a VPC e executar os scripts de init:
 
 ```bash
-AWS_PROFILE=academy kubectl apply -f - <<'EOF'
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: db-init-auth
-spec:
-  template:
-    spec:
-      containers:
-      - name: psql
-        image: postgres:16
-        env:
-        - name: PGPASSWORD
-          value: "<DB_PASSWORD>"
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          psql -h auth-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d auth_db -f- <<SQL
-          CREATE TABLE IF NOT EXISTS api_keys (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, key_hash VARCHAR(64) NOT NULL UNIQUE, is_active BOOLEAN DEFAULT true, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
-          SQL
-      restartPolicy: Never
-  backoffLimit: 1
----
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: db-init-flag
-spec:
-  template:
-    spec:
-      containers:
-      - name: psql
-        image: postgres:16
-        env:
-        - name: PGPASSWORD
-          value: "<DB_PASSWORD>"
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          psql -h flag-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d flag_db -f- <<SQL
-          CREATE TABLE IF NOT EXISTS flags (id SERIAL PRIMARY KEY, name VARCHAR(100) UNIQUE NOT NULL, description TEXT, is_enabled BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
-          CREATE OR REPLACE FUNCTION trigger_set_timestamp() RETURNS TRIGGER AS \$\$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END; \$\$ LANGUAGE plpgsql;
-          DROP TRIGGER IF EXISTS set_timestamp ON flags;
-          CREATE TRIGGER set_timestamp BEFORE UPDATE ON flags FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
-          SQL
-      restartPolicy: Never
-  backoffLimit: 1
----
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: db-init-targeting
-spec:
-  template:
-    spec:
-      containers:
-      - name: psql
-        image: postgres:16
-        env:
-        - name: PGPASSWORD
-          value: "<DB_PASSWORD>"
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          psql -h targeting-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d targeting_db -f- <<SQL
-          CREATE TABLE IF NOT EXISTS targeting_rules (id SERIAL PRIMARY KEY, flag_name VARCHAR(100) UNIQUE NOT NULL, is_enabled BOOLEAN NOT NULL DEFAULT true, rules JSONB NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
-          CREATE OR REPLACE FUNCTION trigger_set_timestamp() RETURNS TRIGGER AS \$\$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END; \$\$ LANGUAGE plpgsql;
-          DROP TRIGGER IF EXISTS set_timestamp ON targeting_rules;
-          CREATE TRIGGER set_timestamp BEFORE UPDATE ON targeting_rules FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
-          SQL
-      restartPolicy: Never
-  backoffLimit: 1
-EOF
+# Instalar cliente PostgreSQL (se necessario)
+sudo yum install -y postgresql15
+
+# Executar scripts de schema
+psql -h auth-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d auth_db -f auth-service/db/init.sql
+psql -h flag-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d flag_db -f flag-service/db/init.sql
+psql -h targeting-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d targeting_db -f targeting-service/db/init.sql
 ```
 
-Substituir `<DB_PASSWORD>` e `<RDS_SUFFIX>` pelos valores reais. Verificar com:
-
-```bash
-kubectl get jobs
-kubectl delete jobs db-init-auth db-init-flag db-init-targeting
-```
+Substituir `<RDS_SUFFIX>` pelo sufixo real do endpoint (visivel nos outputs do Terraform ou no console RDS).
 
 ## 6. Builds e Deploy (Automatico)
 

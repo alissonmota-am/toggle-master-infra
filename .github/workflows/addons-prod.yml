@@ -5,16 +5,10 @@ on:
     branches: [main]
     paths:
       - 'addons/**'
-      - 'modules/argocd/**'
-      - 'modules/ingress_nginx/**'
-      - 'modules/metrics_server/**'
   pull_request:
     branches: [main]
     paths:
       - 'addons/**'
-      - 'modules/argocd/**'
-      - 'modules/ingress_nginx/**'
-      - 'modules/metrics_server/**'
   workflow_dispatch:
 
 env:
@@ -37,7 +31,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.9.0
+          terraform_version: 1.15.0
 
       - name: Terraform Init
         run: terraform init -backend-config="key=addons/prod/terraform.tfstate"
@@ -70,7 +64,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.9.0
+          terraform_version: 1.15.0
 
       - name: Download Plan
         uses: actions/download-artifact@v4
