@@ -69,7 +69,8 @@ resource "aws_db_instance" "this" {
 # Secrets Manager — salva connection string
 ################################################################################
 resource "aws_secretsmanager_secret" "database_url" {
-  name = "${var.project_name}/database-url"
+  name                    = "${var.project_name}/database-url"
+  recovery_window_in_days = 0
 
   tags = {
     Name = "${var.project_name}/database-url"
