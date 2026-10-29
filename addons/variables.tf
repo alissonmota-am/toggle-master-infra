@@ -48,3 +48,44 @@ variable "external_secrets_chart_version" {
   description = "Versao do Helm chart do External Secrets Operator"
   type        = string
 }
+
+# Observability
+variable "kube_prometheus_stack_chart_version" {
+  description = "Versao do Helm chart do kube-prometheus-stack"
+  type        = string
+}
+
+variable "loki_stack_chart_version" {
+  description = "Versao do Helm chart do loki-stack"
+  type        = string
+}
+
+variable "grafana_admin_password" {
+  description = "Senha do admin do Grafana"
+  type        = string
+  sensitive   = true
+}
+
+variable "new_relic_license_key" {
+  description = "License key do New Relic"
+  type        = string
+  sensitive   = true
+}
+
+variable "slack_webhook_url" {
+  description = "Webhook URL do Slack para alertas"
+  type        = string
+  sensitive   = true
+}
+
+variable "pagerduty_routing_key" {
+  description = "Integration key do PagerDuty"
+  type        = string
+  sensitive   = true
+}
+
+variable "environment" {
+  description = "Nome do ambiente (dev, prod)"
+  type        = string
+  default     = "dev"
+}

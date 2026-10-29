@@ -60,3 +60,14 @@ argocd_applications = [
 
 # External Secrets
 external_secrets_chart_version = "0.9.20"
+
+# Observability
+kube_prometheus_stack_chart_version = "61.3.2"
+loki_stack_chart_version            = "2.10.2"
+environment                         = "dev"
+
+# Variáveis sensíveis — injetar via GitHub Actions secrets (TF_VAR_*)
+# TF_VAR_grafana_admin_password
+# TF_VAR_new_relic_license_key
+# TF_VAR_slack_webhook_url
+# TF_VAR_pagerduty_routing_key
