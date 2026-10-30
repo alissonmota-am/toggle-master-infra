@@ -17,7 +17,6 @@ resource "helm_release" "kube_prometheus_stack" {
   version    = var.kube_prometheus_stack_chart_version
   namespace  = kubernetes_namespace.observability.metadata[0].name
 
-  # Grafana habilitado com LoadBalancer para acesso externo na demo
   set {
     name  = "grafana.enabled"
     value = "true"
@@ -96,7 +95,7 @@ resource "helm_release" "kube_prometheus_stack" {
     value = "false"
   }
 
-  # Habilita remote_write no Prometheus para o OTel Collector enviar métricas
+  # Habilita remote_write para o OTel Collector enviar métricas
   set {
     name  = "prometheus.prometheusSpec.enableRemoteWriteReceiver"
     value = "true"
@@ -118,7 +117,6 @@ resource "helm_release" "loki_stack" {
   version    = var.loki_stack_chart_version
   namespace  = kubernetes_namespace.observability.metadata[0].name
 
-  # Promtail coleta logs de todos os pods do cluster automaticamente
   set {
     name  = "promtail.enabled"
     value = "true"
@@ -171,7 +169,6 @@ resource "kubernetes_config_map" "grafana_datasource_loki" {
 ################################################################################
 resource "kubernetes_secret" "alertmanager_config" {
   metadata {
-    # Este nome específico é lido automaticamente pelo Alertmanager do kube-prometheus-stack
     name      = "alertmanager-kube-prometheus-stack-alertmanager"
     namespace = kubernetes_namespace.observability.metadata[0].name
   }
@@ -201,13 +198,13 @@ resource "kubernetes_secret" "alertmanager_config" {
           slack_configs:
             - api_url: "${var.slack_webhook_url}"
               channel: '#toggle-master-alerts'
-              title: '🚨 [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+              title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
               text: |
                 {{ range .Alerts }}
-                *Serviço:* {{ .Labels.service }}
+                *Servico:* {{ .Labels.service }}
                 *Namespace:* {{ .Labels.namespace }}
                 *Severidade:* {{ .Labels.severity }}
-                *Descrição:* {{ .Annotations.description }}
+                *Descricao:* {{ .Annotations.description }}
                 *Runbook:* {{ .Annotations.runbook_url }}
                 {{ end }}
               send_resolved: true
@@ -220,9 +217,6 @@ resource "kubernetes_secret" "alertmanager_config" {
               details:
                 service: '{{ .CommonLabels.service }}'
                 namespace: '{{ .CommonLabels.namespace }}'
-              links:
-                - href: '{{ .CommonAnnotations.runbook_url }}'
-                  text: 'Runbook de Self-Healing'
 
       inhibit_rules:
         - source_matchers:
@@ -231,139 +225,6 @@ resource "kubernetes_secret" "alertmanager_config" {
             - severity="warning"
           equal: ['alertname', 'namespace', 'service']
     YAML
-  }
-
-  depends_on = [helm_release.kube_prometheus_stack]
-}
-
-################################################################################
-# PrometheusRule — Alertas dos microsserviços ToggleMaster
-################################################################################
-resource "kubernetes_manifest" "prometheus_rules" {
-  manifest = {
-    apiVersion = "monitoring.coreos.com/v1"
-    kind       = "PrometheusRule"
-    metadata = {
-      name      = "togglemaster-alerts"
-      namespace = kubernetes_namespace.observability.metadata[0].name
-      labels = {
-        release = "kube-prometheus-stack"
-        app     = "kube-prometheus-stack"
-      }
-    }
-    spec = {
-      groups = [
-        {
-          name     = "togglemaster.http.errors"
-          interval = "30s"
-          rules = [
-            {
-              alert = "AuthServiceHighErrorRate"
-              expr  = "(\n  sum(rate(http_requests_total{service=\"auth-service\", status=~\"5..\"}[5m]))\n  /\n  sum(rate(http_requests_total{service=\"auth-service\"}[5m]))\n) * 100 > 5\n"
-              for   = "2m"
-              labels = {
-                severity  = "critical"
-                service   = "auth-service"
-                namespace = "auth-service"
-              }
-              annotations = {
-                summary     = "Taxa de erros 5xx alta no auth-service"
-                description = "Auth-service com taxa de erros HTTP 5xx acima de 5% nos últimos 2 minutos (atual: {{ $value | printf \"%.1f\" }}%)"
-                runbook_url = "https://github.com/alissonmota-am/auth-service/actions/workflows/self-healing.yml"
-              }
-            },
-            {
-              alert = "EvaluationServiceHighErrorRate"
-              expr  = "(\n  sum(rate(http_requests_total{service=\"evaluation-service\", status=~\"5..\"}[5m]))\n  /\n  sum(rate(http_requests_total{service=\"evaluation-service\"}[5m]))\n) * 100 > 5\n"
-              for   = "2m"
-              labels = {
-                severity  = "critical"
-                service   = "evaluation-service"
-                namespace = "evaluation-service"
-              }
-              annotations = {
-                summary     = "Taxa de erros 5xx alta no evaluation-service"
-                description = "Evaluation-service com taxa de erros HTTP 5xx acima de 5% nos últimos 2 minutos (atual: {{ $value | printf \"%.1f\" }}%)"
-                runbook_url = "https://github.com/alissonmota-am/evaluation-service/actions/workflows/self-healing.yml"
-              }
-            },
-            {
-              alert = "FlagServiceHighErrorRate"
-              expr  = "(\n  sum(rate(http_requests_total{service=\"flag-service\", status=~\"5..\"}[5m]))\n  /\n  sum(rate(http_requests_total{service=\"flag-service\"}[5m]))\n) * 100 > 5\n"
-              for   = "2m"
-              labels = {
-                severity  = "critical"
-                service   = "flag-service"
-                namespace = "flag-service"
-              }
-              annotations = {
-                summary     = "Taxa de erros 5xx alta no flag-service"
-                description = "Flag-service com taxa de erros HTTP 5xx acima de 5% nos últimos 2 minutos (atual: {{ $value | printf \"%.1f\" }}%)"
-                runbook_url = "https://github.com/alissonmota-am/flag-service/actions/workflows/self-healing.yml"
-              }
-            }
-          ]
-        },
-        {
-          name     = "togglemaster.availability"
-          interval = "30s"
-          rules = [
-            {
-              alert = "ToggleMasterPodDown"
-              expr  = "kube_deployment_status_replicas_available{namespace=~\"auth-service|flag-service|targeting-service|evaluation-service|analytics-service\"} == 0\n"
-              for   = "1m"
-              labels = {
-                severity = "critical"
-              }
-              annotations = {
-                summary     = "Serviço {{ $labels.deployment }} sem réplicas disponíveis"
-                description = "O deployment {{ $labels.deployment }} no namespace {{ $labels.namespace }} está com 0 réplicas disponíveis há mais de 1 minuto."
-                runbook_url = "https://github.com/alissonmota-am/toggle-master-infra/actions/workflows/self-healing.yml"
-              }
-            }
-          ]
-        },
-        {
-          name     = "togglemaster.latency"
-          interval = "60s"
-          rules = [
-            {
-              alert = "EvaluationServiceHighLatency"
-              expr  = "histogram_quantile(0.95,\n  sum(rate(http_request_duration_seconds_bucket{service=\"evaluation-service\"}[5m])) by (le)\n) > 1.0\n"
-              for   = "5m"
-              labels = {
-                severity  = "warning"
-                service   = "evaluation-service"
-                namespace = "evaluation-service"
-              }
-              annotations = {
-                summary     = "Latência alta no evaluation-service (p95)"
-                description = "Evaluation-service com p95 de latência acima de 1s nos últimos 5 minutos (atual: {{ $value | printf \"%.2f\" }}s)"
-                runbook_url = "https://github.com/alissonmota-am/evaluation-service/actions/workflows/self-healing.yml"
-              }
-            }
-          ]
-        },
-        {
-          name     = "togglemaster.resources"
-          interval = "60s"
-          rules = [
-            {
-              alert = "ToggleMasterHighMemoryUsage"
-              expr  = "(\n  container_memory_working_set_bytes{namespace=~\"auth-service|flag-service|targeting-service|evaluation-service|analytics-service\", container!=\"\"}\n  /\n  kube_pod_container_resource_limits{namespace=~\"auth-service|flag-service|targeting-service|evaluation-service|analytics-service\", resource=\"memory\", container!=\"\"}\n) * 100 > 85\n"
-              for   = "5m"
-              labels = {
-                severity = "warning"
-              }
-              annotations = {
-                summary     = "Uso de memória alto em {{ $labels.container }}"
-                description = "Container {{ $labels.container }} no namespace {{ $labels.namespace }} usando mais de 85% do limite de memória (atual: {{ $value | printf \"%.1f\" }}%)"
-              }
-            }
-          ]
-        }
-      ]
-    }
   }
 
   depends_on = [helm_release.kube_prometheus_stack]
