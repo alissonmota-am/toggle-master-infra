@@ -60,6 +60,9 @@ jobs:
           helm uninstall kube-prometheus-stack -n observability --wait --timeout 5m || echo "kube-prometheus-stack nao encontrado ou ja removido"
           echo "=== Desinstalando loki-stack ==="
           helm uninstall loki-stack -n observability --wait --timeout 5m || echo "loki-stack nao encontrado ou ja removido"
+          echo "=== Removendo recursos avulsos (deployment/secret do OTel) ==="
+          kubectl delete deployment otel-collector -n observability --ignore-not-found
+          kubectl delete secret alertmanager-kube-prometheus-stack-alertmanager -n observability --ignore-not-found
           echo "=== Releases apos cleanup ==="
           helm list -n observability --all || true
         continue-on-error: true
