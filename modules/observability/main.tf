@@ -175,9 +175,7 @@ resource "helm_release" "kube_prometheus_stack" {
   wait    = false
   timeout = 600
 
-  force_update      = true
-  cleanup_on_fail   = true
-  recreate_pods     = false
+  cleanup_on_fail = true
 
   depends_on = [kubernetes_namespace.observability]
 }
@@ -206,7 +204,6 @@ resource "helm_release" "loki_stack" {
   wait    = false
   timeout = 300
 
-  force_update    = true
   cleanup_on_fail = true
 
   depends_on = [kubernetes_namespace.observability]

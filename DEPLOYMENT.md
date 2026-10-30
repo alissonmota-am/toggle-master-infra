@@ -3,7 +3,11 @@
 ## Pre-requisitos
 
 - Conta AWS Academy ativa com sessao iniciada
-- Bucket S3 `toggle-master-terraform-state-103568492404` criado (bootstrap manual, feito uma vez)
+- Bucket S3 `toggle-master-terraform-state-<ACCOUNT_ID>` criado (bootstrap manual, feito uma vez)
+  - Account ID atual: `533267294133`
+  - Criar com: `aws s3api create-bucket --bucket toggle-master-terraform-state-533267294133 --region us-east-1`
+  - Habilitar versionamento: `aws s3api put-bucket-versioning --bucket toggle-master-terraform-state-533267294133 --versioning-configuration Status=Enabled`
+  - **Importante:** se a conta AWS mudar, atualizar o account ID em `platform/providers.tf`, `addons/providers.tf`, `platform/environments/*.tfvars`
 - Repositorios GitHub com branch `develop` atualizada
 - GitHub CLI (`gh`) autenticado localmente
 - `kubectl` instalado
@@ -63,8 +67,42 @@ Recursos instalados:
 - Nginx Ingress Controller (LoadBalancer)
 - Metrics Server (HPA)
 - External Secrets Operator
+- **Stack de Observabilidade** (Fase 4):
+  - kube-prometheus-stack (Prometheus + Grafana + Alertmanager)
+  - loki-stack (Loki + Promtail)
+  - OTel Collector (recebe telemetria dos microsservicos e roteia para Prometheus/Loki/New Relic)
+  - Datasource do Loki no Grafana
 
-Tempo estimado: ~5 minutos
+Tempo estimado: ~15 minutos (os Helm charts de observabilidade levam alguns minutos)
+
+### Secrets necessarios para a stack de observabilidade
+
+Antes de rodar o workflow de addons, garantir que estes secrets existem no repositorio `toggle-master-infra`:
+
+| Secret | Descricao |
+|--------|-----------|
+| `GRAFANA_ADMIN_PASSWORD` | Senha do admin do Grafana |
+| `NEW_RELIC_LICENSE_KEY` | License key do New Relic (pode ser placeholder para testes) |
+| `SLACK_WEBHOOK_URL` | Webhook do canal Slack para alertas (pode ser placeholder) |
+| `PAGERDUTY_ROUTING_KEY` | Integration key do PagerDuty (pode ser placeholder) |
+
+Configurar com:
+```bash
+gh secret set GRAFANA_ADMIN_PASSWORD --body "<senha>" --repo alissonmota-am/toggle-master-infra
+gh secret set NEW_RELIC_LICENSE_KEY --body "<chave>" --repo alissonmota-am/toggle-master-infra
+gh secret set SLACK_WEBHOOK_URL --body "<webhook>" --repo alissonmota-am/toggle-master-infra
+gh secret set PAGERDUTY_ROUTING_KEY --body "<key>" --repo alissonmota-am/toggle-master-infra
+```
+
+### Validar stack de observabilidade
+
+```bash
+kubectl get pods -n observability
+# Pegar URL do Grafana
+kubectl get svc -n observability kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+# Confirmar que o OTel Collector esta Running
+kubectl get pods -n observability -l app=otel-collector
+```
 
 ### 3.1 Criar secret de credenciais AWS no cluster
 
