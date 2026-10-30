@@ -101,6 +101,77 @@ resource "helm_release" "kube_prometheus_stack" {
     value = "true"
   }
 
+  # Alertmanager — configuração de receivers via Helm values
+  set {
+    name  = "alertmanager.config.global.resolve_timeout"
+    value = "5m"
+  }
+
+  set {
+    name  = "alertmanager.config.route.group_by[0]"
+    value = "alertname"
+  }
+
+  set {
+    name  = "alertmanager.config.route.group_by[1]"
+    value = "namespace"
+  }
+
+  set {
+    name  = "alertmanager.config.route.group_by[2]"
+    value = "service"
+  }
+
+  set {
+    name  = "alertmanager.config.route.group_wait"
+    value = "30s"
+  }
+
+  set {
+    name  = "alertmanager.config.route.group_interval"
+    value = "5m"
+  }
+
+  set {
+    name  = "alertmanager.config.route.repeat_interval"
+    value = "4h"
+  }
+
+  set {
+    name  = "alertmanager.config.route.receiver"
+    value = "slack-notifications"
+  }
+
+  set {
+    name  = "alertmanager.config.receivers[0].name"
+    value = "slack-notifications"
+  }
+
+  set {
+    name  = "alertmanager.config.receivers[0].slack_configs[0].api_url"
+    value = var.slack_webhook_url
+  }
+
+  set {
+    name  = "alertmanager.config.receivers[0].slack_configs[0].channel"
+    value = "#toggle-master-alerts"
+  }
+
+  set {
+    name  = "alertmanager.config.receivers[0].slack_configs[0].send_resolved"
+    value = "true"
+  }
+
+  set {
+    name  = "alertmanager.config.receivers[1].name"
+    value = "critical"
+  }
+
+  set {
+    name  = "alertmanager.config.receivers[1].pagerduty_configs[0].routing_key"
+    value = var.pagerduty_routing_key
+  }
+
   wait    = false
   timeout = 600
 
@@ -165,70 +236,12 @@ resource "kubernetes_config_map" "grafana_datasource_loki" {
 }
 
 ################################################################################
-# Alertmanager Config (Secret — sobrescreve o default do kube-prometheus-stack)
+# Alertmanager Config — injetada via valores do Helm chart
+# (não criamos o Secret manualmente para evitar conflito com o recurso
+# que o kube-prometheus-stack cria automaticamente)
 ################################################################################
-resource "kubernetes_secret" "alertmanager_config" {
-  metadata {
-    name      = "alertmanager-kube-prometheus-stack-alertmanager"
-    namespace = kubernetes_namespace.observability.metadata[0].name
-  }
-
-  data = {
-    "alertmanager.yaml" = <<-YAML
-      global:
-        resolve_timeout: 5m
-
-      route:
-        group_by: ['alertname', 'namespace', 'service']
-        group_wait: 30s
-        group_interval: 5m
-        repeat_interval: 4h
-        receiver: 'slack-notifications'
-        routes:
-          - matchers:
-              - severity="critical"
-            receiver: 'critical'
-            continue: true
-          - matchers:
-              - severity=~"warning|critical"
-            receiver: 'slack-notifications'
-
-      receivers:
-        - name: 'slack-notifications'
-          slack_configs:
-            - api_url: "${var.slack_webhook_url}"
-              channel: '#toggle-master-alerts'
-              title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
-              text: |
-                {{ range .Alerts }}
-                *Servico:* {{ .Labels.service }}
-                *Namespace:* {{ .Labels.namespace }}
-                *Severidade:* {{ .Labels.severity }}
-                *Descricao:* {{ .Annotations.description }}
-                *Runbook:* {{ .Annotations.runbook_url }}
-                {{ end }}
-              send_resolved: true
-
-        - name: 'critical'
-          pagerduty_configs:
-            - routing_key: "${var.pagerduty_routing_key}"
-              description: '{{ .CommonLabels.alertname }}: {{ .CommonAnnotations.description }}'
-              severity: '{{ .CommonLabels.severity }}'
-              details:
-                service: '{{ .CommonLabels.service }}'
-                namespace: '{{ .CommonLabels.namespace }}'
-
-      inhibit_rules:
-        - source_matchers:
-            - severity="critical"
-          target_matchers:
-            - severity="warning"
-          equal: ['alertname', 'namespace', 'service']
-    YAML
-  }
-
-  depends_on = [helm_release.kube_prometheus_stack]
-}
+# A configuração do Alertmanager é passada diretamente no helm_release acima
+# via set { name = "alertmanager.config.*" }. Ver bloco kube_prometheus_stack.
 
 ################################################################################
 # OTel Collector — ServiceAccount
@@ -447,6 +460,11 @@ resource "kubernetes_deployment" "otel_collector" {
     helm_release.kube_prometheus_stack,
     helm_release.loki_stack,
   ]
+
+  timeouts {
+    create = "5m"
+    update = "5m"
+  }
 }
 
 ################################################################################
