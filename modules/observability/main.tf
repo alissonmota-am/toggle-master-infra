@@ -285,6 +285,10 @@ resource "kubernetes_config_map" "otel_collector_config" {
 
   data = {
     "config.yaml" = <<-YAML
+      extensions:
+        health_check:
+          endpoint: "0.0.0.0:13133"
+
       receivers:
         otlp:
           protocols:
@@ -330,6 +334,7 @@ resource "kubernetes_config_map" "otel_collector_config" {
             insecure: false
 
       service:
+        extensions: [health_check]
         pipelines:
           traces:
             receivers: [otlp]
@@ -461,17 +466,14 @@ resource "kubernetes_deployment" "otel_collector" {
     }
   }
 
+  wait_for_rollout = false
+
   depends_on = [
     kubernetes_config_map.otel_collector_config,
     kubernetes_secret.otel_collector,
     helm_release.kube_prometheus_stack,
     helm_release.loki_stack,
   ]
-
-  timeouts {
-    create = "5m"
-    update = "5m"
-  }
 }
 
 ################################################################################
