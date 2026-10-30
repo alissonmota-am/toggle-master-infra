@@ -47,8 +47,7 @@ jobs:
         run: |
           aws eks update-kubeconfig \
             --region us-east-1 \
-            --name toggle-master-dev
-        continue-on-error: true
+            --name toggle-master-dev-cluster
 
       - name: Instalar Helm CLI
         run: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
