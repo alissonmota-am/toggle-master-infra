@@ -43,10 +43,25 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      - name: Terraform State Cleanup (remove recursos com state inconsistente)
+      - name: Configurar kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --region us-east-1 \
+            --name toggle-master-dev
+        continue-on-error: true
+
+      - name: Helm cleanup (remove releases com estado pendente)
+        run: |
+          helm uninstall kube-prometheus-stack -n observability --ignore-not-found 2>/dev/null || true
+          helm uninstall loki-stack -n observability --ignore-not-found 2>/dev/null || true
+        continue-on-error: true
+
+      - name: Terraform State Cleanup
         run: |
           terraform state rm module.observability.kubernetes_secret.alertmanager_config 2>/dev/null || true
           terraform state rm module.observability.kubernetes_deployment.otel_collector 2>/dev/null || true
+          terraform state rm module.observability.helm_release.kube_prometheus_stack 2>/dev/null || true
+          terraform state rm module.observability.helm_release.loki_stack 2>/dev/null || true
         continue-on-error: true
 
       - name: Terraform Plan
