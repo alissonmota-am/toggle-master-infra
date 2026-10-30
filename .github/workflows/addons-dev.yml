@@ -43,6 +43,12 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      - name: Terraform State Cleanup (remove recursos com state inconsistente)
+        run: |
+          terraform state rm module.observability.kubernetes_secret.alertmanager_config 2>/dev/null || true
+          terraform state rm module.observability.kubernetes_deployment.otel_collector 2>/dev/null || true
+        continue-on-error: true
+
       - name: Terraform Plan
         run: terraform plan -var-file=environments/dev.tfvars -out=tfplan
 
@@ -78,12 +84,6 @@ jobs:
 
       - name: Terraform Init
         run: terraform init -backend-config="key=addons/dev/terraform.tfstate"
-
-      - name: Terraform State Cleanup (remove recursos com state inconsistente)
-        run: |
-          terraform state rm module.observability.kubernetes_deployment.otel_collector || true
-          terraform state rm module.observability.kubernetes_secret.alertmanager_config || true
-        continue-on-error: true
 
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
