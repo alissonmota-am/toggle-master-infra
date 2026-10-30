@@ -14,10 +14,10 @@ eks_node_desired_size  = 2
 eks_node_min_size      = 1
 eks_node_max_size      = 4
 eks_node_capacity_type = "SPOT"
-lab_role_arn           = "arn:aws:iam::103568492404:role/LabRole"
+lab_role_arn           = "arn:aws:iam::533267294133:role/LabRole"
 
 # ECR
 service_names = ["auth-service", "flag-service", "targeting-service", "evaluation-service", "analytics-service"]
 
 # AWS Academy voclabs role
-voclabs_role_arn = "arn:aws:iam::103568492404:role/voclabs"
+voclabs_role_arn = "arn:aws:iam::533267294133:role/voclabs"
