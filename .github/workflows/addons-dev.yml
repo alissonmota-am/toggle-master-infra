@@ -50,10 +50,14 @@ jobs:
             --name toggle-master-dev
         continue-on-error: true
 
+      - name: Instalar Helm CLI
+        run: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        continue-on-error: true
+
       - name: Helm cleanup (remove releases com estado pendente)
         run: |
-          helm uninstall kube-prometheus-stack -n observability --ignore-not-found 2>/dev/null || true
-          helm uninstall loki-stack -n observability --ignore-not-found 2>/dev/null || true
+          helm uninstall kube-prometheus-stack -n observability 2>/dev/null || true
+          helm uninstall loki-stack -n observability 2>/dev/null || true
         continue-on-error: true
 
       - name: Terraform State Cleanup
