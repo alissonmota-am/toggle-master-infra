@@ -52,20 +52,27 @@ jobs:
 
       - name: Instalar Helm CLI
         run: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-        continue-on-error: true
 
       - name: Helm cleanup (remove releases com estado pendente)
         run: |
-          helm uninstall kube-prometheus-stack -n observability 2>/dev/null || true
-          helm uninstall loki-stack -n observability 2>/dev/null || true
+          echo "=== Releases atuais no namespace observability ==="
+          helm list -n observability --all || true
+          echo "=== Desinstalando kube-prometheus-stack ==="
+          helm uninstall kube-prometheus-stack -n observability --wait --timeout 5m || echo "kube-prometheus-stack nao encontrado ou ja removido"
+          echo "=== Desinstalando loki-stack ==="
+          helm uninstall loki-stack -n observability --wait --timeout 5m || echo "loki-stack nao encontrado ou ja removido"
+          echo "=== Releases apos cleanup ==="
+          helm list -n observability --all || true
         continue-on-error: true
 
       - name: Terraform State Cleanup
         run: |
-          terraform state rm module.observability.kubernetes_secret.alertmanager_config 2>/dev/null || true
-          terraform state rm module.observability.kubernetes_deployment.otel_collector 2>/dev/null || true
-          terraform state rm module.observability.helm_release.kube_prometheus_stack 2>/dev/null || true
-          terraform state rm module.observability.helm_release.loki_stack 2>/dev/null || true
+          set +e
+          terraform state rm module.observability.kubernetes_secret.alertmanager_config
+          terraform state rm module.observability.kubernetes_deployment.otel_collector
+          terraform state rm module.observability.helm_release.kube_prometheus_stack
+          terraform state rm module.observability.helm_release.loki_stack
+          exit 0
         continue-on-error: true
 
       - name: Terraform Plan
