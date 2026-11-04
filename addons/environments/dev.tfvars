@@ -15,46 +15,46 @@ argocd_chart_version = "7.3.11"
 
 argocd_applications = [
   {
-    name       = "cluster-base"
-    repo_url   = "https://github.com/alissonmota-am/toggle-master-infra.git"
-    path       = "k8s-base"
-    namespace  = "external-secrets"
-    branch     = "develop"
+    name      = "cluster-base"
+    repo_url  = "https://github.com/alissonmota-am/toggle-master-infra.git"
+    path      = "k8s-base"
+    namespace = "external-secrets"
+    branch    = "develop"
   },
   {
-    name       = "auth-service"
-    repo_url   = "https://github.com/alissonmota-am/auth-service.git"
-    path       = "k8s"
-    namespace  = "auth-service"
-    branch     = "develop"
+    name      = "auth-service"
+    repo_url  = "https://github.com/alissonmota-am/auth-service.git"
+    path      = "k8s"
+    namespace = "auth-service"
+    branch    = "develop"
   },
   {
-    name       = "flag-service"
-    repo_url   = "https://github.com/alissonmota-am/flag-service.git"
-    path       = "k8s"
-    namespace  = "flag-service"
-    branch     = "develop"
+    name      = "flag-service"
+    repo_url  = "https://github.com/alissonmota-am/flag-service.git"
+    path      = "k8s"
+    namespace = "flag-service"
+    branch    = "develop"
   },
   {
-    name       = "targeting-service"
-    repo_url   = "https://github.com/alissonmota-am/targeting-service.git"
-    path       = "k8s"
-    namespace  = "targeting-service"
-    branch     = "develop"
+    name      = "targeting-service"
+    repo_url  = "https://github.com/alissonmota-am/targeting-service.git"
+    path      = "k8s"
+    namespace = "targeting-service"
+    branch    = "develop"
   },
   {
-    name       = "evaluation-service"
-    repo_url   = "https://github.com/alissonmota-am/evaluation-service.git"
-    path       = "k8s"
-    namespace  = "evaluation-service"
-    branch     = "develop"
+    name      = "evaluation-service"
+    repo_url  = "https://github.com/alissonmota-am/evaluation-service.git"
+    path      = "k8s"
+    namespace = "evaluation-service"
+    branch    = "develop"
   },
   {
-    name       = "analytics-service"
-    repo_url   = "https://github.com/alissonmota-am/analytics-service.git"
-    path       = "k8s"
-    namespace  = "analytics-service"
-    branch     = "develop"
+    name      = "analytics-service"
+    repo_url  = "https://github.com/alissonmota-am/analytics-service.git"
+    path      = "k8s"
+    namespace = "analytics-service"
+    branch    = "develop"
   }
 ]
 
@@ -71,3 +71,7 @@ environment                         = "dev"
 # TF_VAR_new_relic_license_key
 # TF_VAR_slack_webhook_url
 # TF_VAR_pagerduty_routing_key
+# TF_VAR_self_healing_github_token
+# TF_VAR_self_healing_webhook_token
+# Self-Healing (role de execucao da Lambda)
+lab_role_arn = "arn:aws:iam::533267294133:role/LabRole"

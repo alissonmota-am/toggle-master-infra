@@ -37,3 +37,14 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+variable "self_healing_url" {
+  description = "URL da Function URL da Lambda de self-healing (destino do webhook do Alertmanager para alertas criticos)"
+  type        = string
+}
+
+variable "self_healing_webhook_token" {
+  description = "Token enviado pelo Alertmanager no cabecalho Authorization da chamada a Lambda"
+  type        = string
+  sensitive   = true
+}

@@ -15,41 +15,43 @@ argocd_chart_version = "7.3.11"
 
 argocd_applications = [
   {
-    name       = "auth-service"
-    repo_url   = "https://github.com/alissonmota-am/auth-service.git"
-    path       = "k8s"
-    namespace  = "auth-service"
-    branch     = "main"
+    name      = "auth-service"
+    repo_url  = "https://github.com/alissonmota-am/auth-service.git"
+    path      = "k8s"
+    namespace = "auth-service"
+    branch    = "main"
   },
   {
-    name       = "flag-service"
-    repo_url   = "https://github.com/alissonmota-am/flag-service.git"
-    path       = "k8s"
-    namespace  = "flag-service"
-    branch     = "main"
+    name      = "flag-service"
+    repo_url  = "https://github.com/alissonmota-am/flag-service.git"
+    path      = "k8s"
+    namespace = "flag-service"
+    branch    = "main"
   },
   {
-    name       = "targeting-service"
-    repo_url   = "https://github.com/alissonmota-am/targeting-service.git"
-    path       = "k8s"
-    namespace  = "targeting-service"
-    branch     = "main"
+    name      = "targeting-service"
+    repo_url  = "https://github.com/alissonmota-am/targeting-service.git"
+    path      = "k8s"
+    namespace = "targeting-service"
+    branch    = "main"
   },
   {
-    name       = "evaluation-service"
-    repo_url   = "https://github.com/alissonmota-am/evaluation-service.git"
-    path       = "k8s"
-    namespace  = "evaluation-service"
-    branch     = "main"
+    name      = "evaluation-service"
+    repo_url  = "https://github.com/alissonmota-am/evaluation-service.git"
+    path      = "k8s"
+    namespace = "evaluation-service"
+    branch    = "main"
   },
   {
-    name       = "analytics-service"
-    repo_url   = "https://github.com/alissonmota-am/analytics-service.git"
-    path       = "k8s"
-    namespace  = "analytics-service"
-    branch     = "main"
+    name      = "analytics-service"
+    repo_url  = "https://github.com/alissonmota-am/analytics-service.git"
+    path      = "k8s"
+    namespace = "analytics-service"
+    branch    = "main"
   }
 ]
 
 # External Secrets
 external_secrets_chart_version = "0.9.20"
+# Self-Healing (role de execucao da Lambda)
+lab_role_arn = "arn:aws:iam::533267294133:role/LabRole"

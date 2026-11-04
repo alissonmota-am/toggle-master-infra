@@ -1,0 +1,78 @@
+# Configuracao do Alertmanager (renderizada pelo Terraform via templatefile).
+# As variaveis slack_webhook_url e pagerduty_routing_key sao substituidas na
+# renderizacao; os blocos de chaves duplas sao templates do proprio Alertmanager
+# e sao preservados.
+global:
+  resolve_timeout: 5m
+
+route:
+  # Destino padrao: alertas que NAO sao do ToggleMaster (ex.: os alertas que o
+  # proprio chart traz, como Watchdog) sao descartados. Evita alert fatigue e
+  # impede que alertas de componentes inexistentes no EKS abram incidentes.
+  receiver: "null"
+  group_by: ['alertname', 'namespace', 'service']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # 1) Alertas criticos do ToggleMaster -> PagerDuty (abre incidente).
+    #    continue: true faz o alerta seguir para a proxima rota (Slack).
+    - receiver: critical
+      matchers:
+        - team = "togglemaster"
+        - severity = "critical"
+      continue: true
+    # 2) Todos os alertas do ToggleMaster (warning e critical) -> Slack.
+    - receiver: slack-notifications
+      matchers:
+        - team = "togglemaster"
+        - severity =~ "warning|critical"
+
+receivers:
+  # Descarta o alerta (nenhuma notificacao)
+  - name: "null"
+
+  - name: slack-notifications
+    slack_configs:
+      - api_url: "${slack_webhook_url}"
+        send_resolved: true
+        title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}'
+        text: |-
+          {{ range .Alerts }}
+          *Resumo:* {{ .Annotations.summary }}
+          *Descricao:* {{ .Annotations.description }}
+          *Severidade:* {{ .Labels.severity }}
+          *Servico:* {{ .Labels.service }}
+          *Namespace:* {{ .Labels.namespace }}
+          *Inicio:* {{ .StartsAt.Format "02/01/2006 15:04:05 MST" }}
+          *Runbook (Self-Healing):* {{ .Annotations.runbook_url }}
+          {{ end }}
+
+  - name: critical
+    pagerduty_configs:
+      - routing_key: "${pagerduty_routing_key}"
+        send_resolved: true
+        description: '{{ .CommonLabels.alertname }}: {{ .CommonAnnotations.summary }}'
+        severity: '{{ .CommonLabels.severity }}'
+        details:
+          descricao: '{{ .CommonAnnotations.description }}'
+          servico: '{{ .CommonLabels.service }}'
+          namespace: '{{ .CommonLabels.namespace }}'
+          runbook: '{{ .CommonAnnotations.runbook_url }}'
+    # Self-Healing: chama a Lambda, que dispara o workflow do GitHub Actions
+    # (kubectl rollout restart). Nao envia "resolved": so age quando o alerta dispara.
+    webhook_configs:
+      - url: "${self_healing_url}"
+        send_resolved: false
+        http_config:
+          authorization:
+            type: Bearer
+            credentials: "${self_healing_token}"
+
+inhibit_rules:
+  # Se ha um alerta critical ativo para o mesmo servico, suprime o warning equivalente
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ['alertname', 'namespace', 'service']

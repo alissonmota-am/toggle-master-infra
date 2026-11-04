@@ -13,6 +13,7 @@ groups:
           ) * 100 > 5
         for: 2m
         labels:
+          team: togglemaster
           severity: critical
           service: auth-service
           namespace: auth-service
@@ -30,6 +31,7 @@ groups:
           ) * 100 > 5
         for: 2m
         labels:
+          team: togglemaster
           severity: critical
           service: evaluation-service
           namespace: evaluation-service
@@ -47,6 +49,7 @@ groups:
           ) * 100 > 5
         for: 2m
         labels:
+          team: togglemaster
           severity: critical
           service: flag-service
           namespace: flag-service
@@ -65,6 +68,7 @@ groups:
           kube_deployment_status_replicas_available{namespace=~"auth-service|flag-service|targeting-service|evaluation-service|analytics-service"} == 0
         for: 1m
         labels:
+          team: togglemaster
           severity: critical
         annotations:
           summary: "Servico {{ $labels.deployment }} sem replicas disponiveis"
@@ -83,6 +87,7 @@ groups:
           ) > 1000
         for: 5m
         labels:
+          team: togglemaster
           severity: warning
           service: evaluation-service
           namespace: evaluation-service
@@ -105,6 +110,7 @@ groups:
           ) * 100 > 85
         for: 5m
         labels:
+          team: togglemaster
           severity: warning
         annotations:
           summary: "Uso de memoria alto em {{ $labels.container }}"

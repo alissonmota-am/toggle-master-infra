@@ -35,11 +35,11 @@ variable "argocd_chart_version" {
 variable "argocd_applications" {
   description = "Lista de aplicacoes para o ArgoCD monitorar"
   type = list(object({
-    name       = string
-    repo_url   = string
-    path       = string
-    namespace  = string
-    branch     = string
+    name      = string
+    repo_url  = string
+    path      = string
+    namespace = string
+    branch    = string
   }))
 }
 
@@ -88,4 +88,22 @@ variable "environment" {
   description = "Nome do ambiente (dev, prod)"
   type        = string
   default     = "dev"
+}
+
+# Self-Healing (Lambda)
+variable "lab_role_arn" {
+  description = "ARN da LabRole do AWS Academy, usada como role de execucao da Lambda"
+  type        = string
+}
+
+variable "self_healing_github_token" {
+  description = "GitHub PAT usado pela Lambda para disparar o workflow de self-healing"
+  type        = string
+  sensitive   = true
+}
+
+variable "self_healing_webhook_token" {
+  description = "Token compartilhado entre o Alertmanager e a Lambda de self-healing"
+  type        = string
+  sensitive   = true
 }

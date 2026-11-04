@@ -98,22 +98,22 @@ Antes de rodar o workflow de addons, garantir que estes secrets existem no repos
 | Secret | Descricao |
 |--------|-----------|
 | `GRAFANA_ADMIN_PASSWORD` | Senha do admin do Grafana |
-| `NEW_RELIC_LICENSE_KEY` | License key do New Relic (pode ser placeholder para testes) |
-| `SLACK_WEBHOOK_URL` | Webhook do canal Slack para alertas (pode ser placeholder) |
-| `PAGERDUTY_ROUTING_KEY` | Integration key do PagerDuty (pode ser placeholder) |
+| `NEW_RELIC_LICENSE_KEY` | Ingest License Key da conta New Relic (sem ela os traces nao aparecem no APM) |
+| `SLACK_WEBHOOK_URL` | Incoming Webhook do canal `#toggle-master-alerts` |
+| `PAGERDUTY_ROUTING_KEY` | Integration Key de um servico no PagerDuty (aceita no endpoint Events API v2) |
 
-Configurar com:
+Os quatro secrets ja estao configurados com valores reais no repositorio e **nao precisam ser recriados** ao subir o
+ambiente de novo, pois pertencem ao repositorio e nao ao cluster. So os secrets `AWS_*` expiram (sessao do Academy)
+e precisam ser atualizados a cada sessao (ver 1.1).
+
+Para conferir ou trocar algum valor:
 ```bash
-gh secret set GRAFANA_ADMIN_PASSWORD --body "<senha>" --repo alissonmota-am/toggle-master-infra
-gh secret set NEW_RELIC_LICENSE_KEY --body "<chave>" --repo alissonmota-am/toggle-master-infra
-gh secret set SLACK_WEBHOOK_URL --body "<webhook>" --repo alissonmota-am/toggle-master-infra
-gh secret set PAGERDUTY_ROUTING_KEY --body "<key>" --repo alissonmota-am/toggle-master-infra
+gh secret list --repo alissonmota-am/toggle-master-infra
+gh secret set <NOME_DO_SECRET> --repo alissonmota-am/toggle-master-infra   # pede o valor no terminal
 ```
 
-Para a demo da Fase 4, os valores precisam ser reais (nao placeholder):
-- `NEW_RELIC_LICENSE_KEY`: Ingest License Key da conta New Relic (sem ela os traces nao aparecem no APM)
-- `SLACK_WEBHOOK_URL`: Incoming Webhook do canal `#toggle-master-alerts`
-- `PAGERDUTY_ROUTING_KEY`: Integration Key (Events API v2) de um servico no PagerDuty
+Sem um valor valido, o `terraform apply` continua funcionando, mas a integracao correspondente nao entrega nada:
+traces ausentes no New Relic, alertas que nao chegam ao Slack ou incidentes que nao abrem no PagerDuty.
 
 ### Validar stack de observabilidade
 

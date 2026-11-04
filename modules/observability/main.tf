@@ -101,88 +101,23 @@ resource "helm_release" "kube_prometheus_stack" {
     value = "true"
   }
 
-  # Alertmanager — configuração de receivers via Helm values
-  set {
-    name  = "alertmanager.config.global.resolve_timeout"
-    value = "5m"
-  }
-
-  set {
-    name  = "alertmanager.config.route.group_by[0]"
-    value = "alertname"
-  }
-
-  set {
-    name  = "alertmanager.config.route.group_by[1]"
-    value = "namespace"
-  }
-
-  set {
-    name  = "alertmanager.config.route.group_by[2]"
-    value = "service"
-  }
-
-  set {
-    name  = "alertmanager.config.route.group_wait"
-    value = "30s"
-  }
-
-  set {
-    name  = "alertmanager.config.route.group_interval"
-    value = "5m"
-  }
-
-  set {
-    name  = "alertmanager.config.route.repeat_interval"
-    value = "4h"
-  }
-
-  set {
-    name  = "alertmanager.config.route.receiver"
-    value = "slack-notifications"
-  }
-
-  set {
-    name  = "alertmanager.config.receivers[0].name"
-    value = "slack-notifications"
-  }
-
-  set {
-    name  = "alertmanager.config.receivers[0].slack_configs[0].api_url"
-    value = var.slack_webhook_url
-  }
-
-  set {
-    name  = "alertmanager.config.receivers[0].slack_configs[0].channel"
-    value = "#toggle-master-alerts"
-  }
-
-  set {
-    name  = "alertmanager.config.receivers[0].slack_configs[0].send_resolved"
-    value = "true"
-  }
-
-  set {
-    name  = "alertmanager.config.receivers[1].name"
-    value = "critical"
-  }
-
-  # PagerDuty — abre incidente automaticamente em alertas criticos.
-  # A ponte para o Self-Healing (GitHub Action) e feita pelo PagerDuty via
-  # Webhook/Automation Action apontando para a API repository_dispatch do GitHub.
-  # Ver ROTEIRO-FASE4-OBSERVABILIDADE.md para o fluxo completo de integracao.
-  set {
-    name  = "alertmanager.config.receivers[1].pagerduty_configs[0].routing_key"
-    value = var.pagerduty_routing_key
-  }
-
-  # Regras de alerta customizadas do ToggleMaster.
-  # Injetadas via additionalPrometheusRulesMap — como e o mesmo chart que
-  # registra o CRD PrometheusRule, nao ha problema de ordem de criacao.
   values = [
     yamlencode({
       additionalPrometheusRulesMap = {
         "togglemaster-alerts" = yamldecode(file("${path.module}/rules/togglemaster-alerts.yaml"))
+      }
+    }),
+    # Alertmanager: rotas e receivers em arquivo proprio (alertmanager/config.yaml.tftpl).
+    # Os alertas com team=togglemaster e severity=critical vao para o PagerDuty e o Slack;
+    # os de severity=warning vao so para o Slack; o restante e descartado.
+    yamlencode({
+      alertmanager = {
+        config = yamldecode(templatefile("${path.module}/alertmanager/config.yaml.tftpl", {
+          slack_webhook_url     = var.slack_webhook_url
+          pagerduty_routing_key = var.pagerduty_routing_key
+          self_healing_url      = var.self_healing_url
+          self_healing_token    = var.self_healing_webhook_token
+        }))
       }
     })
   ]
@@ -279,8 +214,8 @@ resource "kubernetes_config_map" "grafana_dashboard_overview" {
 # (não criamos o Secret manualmente para evitar conflito com o recurso
 # que o kube-prometheus-stack cria automaticamente)
 ################################################################################
-# A configuração do Alertmanager é passada diretamente no helm_release acima
-# via set { name = "alertmanager.config.*" }. Ver bloco kube_prometheus_stack.
+# A configuração (rotas e receivers) fica em alertmanager/config.yaml.tftpl e é
+# passada no bloco "values" do helm_release kube_prometheus_stack acima.
 
 ################################################################################
 # OTel Collector — ServiceAccount

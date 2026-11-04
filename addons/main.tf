@@ -49,4 +49,17 @@ module "observability" {
   slack_webhook_url                   = var.slack_webhook_url
   pagerduty_routing_key               = var.pagerduty_routing_key
   environment                         = var.environment
+  self_healing_url                    = module.self_healing.function_url
+  self_healing_webhook_token          = var.self_healing_webhook_token
+}
+
+################################################################################
+# Self-Healing (Lambda chamada pelo Alertmanager -> dispara o GitHub Actions)
+################################################################################
+module "self_healing" {
+  source = "../modules/self_healing"
+
+  role_arn      = var.lab_role_arn
+  github_token  = var.self_healing_github_token
+  webhook_token = var.self_healing_webhook_token
 }
