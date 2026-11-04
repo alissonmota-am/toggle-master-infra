@@ -277,8 +277,10 @@ gh workflow run self-healing.yml --repo alissonmota-am/toggle-master-infra \
   -f service=auth-service -f namespace=auth-service
 ```
 
-O disparo automatico usa `repository_dispatch` (tipo `self-healing`) chamado pelo PagerDuty via webhook, o que exige
-um GitHub PAT com escopo `repo` configurado no PagerDuty. Detalhes e roteiro de demonstracao em `ROTEIRO-FASE4-OBSERVABILIDADE.md`.
+O disparo automatico e feito pelo PagerDuty (Incident Workflow, acao "Send POST Request") chamando a API REST
+`POST /repos/alissonmota-am/toggle-master-infra/actions/workflows/self-healing.yml/dispatches` com `ref=develop`.
+Isso exige um GitHub PAT configurado no PagerDuty. Nao se usa `repository_dispatch`, porque a branch padrao (`main`)
+nao contem o workflow. Detalhes e roteiro de demonstracao em `ROTEIRO-FASE4-OBSERVABILIDADE.md`.
 
 ## 9. Forcar Sync dos External Secrets
 

@@ -1,12 +1,13 @@
 name: Self-Healing - Rollout Restart
 
 # Automacao de Self-Healing para a Fase 4.
-# Disparada via webhook (repository_dispatch) pelo Alertmanager quando um
-# alerta critico dispara (ex: taxa de erros 5xx > 5% no auth-service).
-# A acao corretiva reinicia o deployment afetado para tentar mitigar a falha
-# sem intervencao humana.
+# Quando um alerta critico dispara (ex: taxa de erros 5xx > 5% no auth-service),
+# o Alertmanager abre um incidente no PagerDuty, e um Incident Workflow do
+# PagerDuty chama a API REST do GitHub (workflow_dispatch, ref=develop) para
+# executar este workflow. A acao corretiva reinicia o deployment afetado para
+# tentar mitigar a falha sem intervencao humana.
 #
-# Tambem pode ser disparada manualmente (workflow_dispatch) para testes.
+# Tambem pode ser disparada manualmente (gh workflow run) para testes.
 
 on:
   # O push abaixo existe apenas para REGISTRAR o workflow no GitHub: como a branch
