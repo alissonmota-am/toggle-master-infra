@@ -167,10 +167,25 @@ resource "helm_release" "kube_prometheus_stack" {
     value = "critical"
   }
 
+  # PagerDuty — abre incidente automaticamente em alertas criticos.
+  # A ponte para o Self-Healing (GitHub Action) e feita pelo PagerDuty via
+  # Webhook/Automation Action apontando para a API repository_dispatch do GitHub.
+  # Ver ROTEIRO-FASE4-OBSERVABILIDADE.md para o fluxo completo de integracao.
   set {
     name  = "alertmanager.config.receivers[1].pagerduty_configs[0].routing_key"
     value = var.pagerduty_routing_key
   }
+
+  # Regras de alerta customizadas do ToggleMaster.
+  # Injetadas via additionalPrometheusRulesMap — como e o mesmo chart que
+  # registra o CRD PrometheusRule, nao ha problema de ordem de criacao.
+  values = [
+    yamlencode({
+      additionalPrometheusRulesMap = {
+        "togglemaster-alerts" = yamldecode(file("${path.module}/rules/togglemaster-alerts.yaml"))
+      }
+    })
+  ]
 
   wait    = false
   timeout = 600
@@ -237,6 +252,26 @@ resource "kubernetes_config_map" "grafana_datasource_loki" {
   }
 
   depends_on = [helm_release.kube_prometheus_stack, helm_release.loki_stack]
+}
+
+################################################################################
+# Dashboard customizado do Grafana (ConfigMap lido pelo sidecar)
+# Centraliza: recursos do cluster, taxa de requisicoes e logs em tempo real
+################################################################################
+resource "kubernetes_config_map" "grafana_dashboard_overview" {
+  metadata {
+    name      = "grafana-dashboard-togglemaster"
+    namespace = kubernetes_namespace.observability.metadata[0].name
+    labels = {
+      grafana_dashboard = "1"
+    }
+  }
+
+  data = {
+    "togglemaster-overview.json" = file("${path.module}/dashboards/togglemaster-overview.json")
+  }
+
+  depends_on = [helm_release.kube_prometheus_stack]
 }
 
 ################################################################################
@@ -316,6 +351,11 @@ resource "kubernetes_config_map" "otel_collector_config" {
           endpoint: "http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write"
           tls:
             insecure: true
+          # Converte atributos de recurso (service.name, deployment.environment...)
+          # em labels (service_name, deployment_environment...) para permitir
+          # consultas e alertas por servico.
+          resource_to_telemetry_conversion:
+            enabled: true
         loki:
           endpoint: "http://loki-stack.observability.svc.cluster.local:3100/loki/api/v1/push"
           default_labels_enabled:

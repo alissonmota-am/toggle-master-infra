@@ -5,10 +5,12 @@ on:
     branches: [develop]
     paths:
       - 'addons/**'
+      - 'modules/observability/**'
   pull_request:
     branches: [develop]
     paths:
       - 'addons/**'
+      - 'modules/observability/**'
   workflow_dispatch:
 
 env:

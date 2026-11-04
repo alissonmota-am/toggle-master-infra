@@ -1,0 +1,88 @@
+name: Self-Healing - Rollout Restart
+
+# Automacao de Self-Healing para a Fase 4.
+# Disparada via webhook (repository_dispatch) pelo Alertmanager quando um
+# alerta critico dispara (ex: taxa de erros 5xx > 5% no auth-service).
+# A acao corretiva reinicia o deployment afetado para tentar mitigar a falha
+# sem intervencao humana.
+#
+# Tambem pode ser disparada manualmente (workflow_dispatch) para testes.
+
+on:
+  repository_dispatch:
+    types: [self-healing]
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Servico a reiniciar (ex: auth-service)"
+        required: true
+        default: "auth-service"
+      namespace:
+        description: "Namespace do servico"
+        required: true
+        default: "auth-service"
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: toggle-master-dev-cluster
+
+jobs:
+  rollout-restart:
+    name: Rollout Restart do Deployment
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolver servico e namespace alvo
+        id: target
+        run: |
+          # repository_dispatch envia client_payload; workflow_dispatch envia inputs
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            SERVICE="${{ github.event.client_payload.service }}"
+            NAMESPACE="${{ github.event.client_payload.namespace }}"
+          else
+            SERVICE="${{ github.event.inputs.service }}"
+            NAMESPACE="${{ github.event.inputs.namespace }}"
+          fi
+
+          # Fallback seguro: se nao vier namespace, usa o nome do servico
+          SERVICE="${SERVICE:-auth-service}"
+          NAMESPACE="${NAMESPACE:-$SERVICE}"
+
+          echo "service=$SERVICE" >> "$GITHUB_OUTPUT"
+          echo "namespace=$NAMESPACE" >> "$GITHUB_OUTPUT"
+          echo "Alvo do self-healing: deployment/$SERVICE no namespace $NAMESPACE"
+
+      - name: Configurar kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --region "$AWS_REGION" \
+            --name "$CLUSTER_NAME"
+
+      - name: Executar rollout restart (acao corretiva)
+        run: |
+          SERVICE="${{ steps.target.outputs.service }}"
+          NAMESPACE="${{ steps.target.outputs.namespace }}"
+
+          echo "=== Estado ANTES do restart ==="
+          kubectl get pods -n "$NAMESPACE" -l app="$SERVICE" -o wide || true
+
+          echo "=== Executando rollout restart ==="
+          kubectl rollout restart deployment/"$SERVICE" -n "$NAMESPACE"
+
+          echo "=== Aguardando rollout concluir ==="
+          kubectl rollout status deployment/"$SERVICE" -n "$NAMESPACE" --timeout=180s
+
+          echo "=== Estado DEPOIS do restart ==="
+          kubectl get pods -n "$NAMESPACE" -l app="$SERVICE" -o wide
+
+      - name: Registrar evento de self-healing
+        if: always()
+        run: |
+          SERVICE="${{ steps.target.outputs.service }}"
+          NAMESPACE="${{ steps.target.outputs.namespace }}"
+          echo "Self-Healing executado em $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          echo "Deployment reiniciado: $SERVICE (namespace: $NAMESPACE)"
+          echo "Disparado por: ${{ github.event_name }}"

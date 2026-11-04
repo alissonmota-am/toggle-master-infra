@@ -7,10 +7,20 @@
   - Account ID atual: `533267294133`
   - Criar com: `aws s3api create-bucket --bucket toggle-master-terraform-state-533267294133 --region us-east-1`
   - Habilitar versionamento: `aws s3api put-bucket-versioning --bucket toggle-master-terraform-state-533267294133 --versioning-configuration Status=Enabled`
-  - **Importante:** se a conta AWS mudar, atualizar o account ID em `platform/providers.tf`, `addons/providers.tf`, `platform/environments/*.tfvars`
+  - O account ID e fixo em todos os repositorios (ver "Conta AWS" abaixo)
 - Repositorios GitHub com branch `develop` atualizada
 - GitHub CLI (`gh`) autenticado localmente
 - `kubectl` instalado
+
+### Conta AWS
+
+Todos os repositorios (infra e os 5 servicos) estao alinhados com a conta `533267294133`: bucket de state, `ECR_REGISTRY`
+dos builds, `image:` dos deployments e `AWS_SQS_URL` dos ConfigMaps. Se a conta mudar um dia, localizar todas as
+ocorrencias com `grep -rn "<ACCOUNT_ID_ANTIGO>" --include="*.yml" --include="*.yaml" --include="*.tf" --include="*.tfvars" .`
+
+**Nota:** apos recriar o ambiente, o ECR esta vazio. Os pods dos servicos ficam em `ImagePullBackOff` ate o CI publicar
+as imagens (passo 6). O nome da fila SQS vem do Terraform do analytics-service (`analytics-service-dev-queue`) e a URL
+no ConfigMap deve corresponder a ele.
 
 ## 1. Configurar Secrets nos Repositorios GitHub
 
@@ -72,8 +82,14 @@ Recursos instalados:
   - loki-stack (Loki + Promtail)
   - OTel Collector (recebe telemetria dos microsservicos e roteia para Prometheus/Loki/New Relic)
   - Datasource do Loki no Grafana
+  - Dashboard "ToggleMaster - Saude do Ecossistema" (ConfigMap lido pelo sidecar do Grafana)
+  - Regras de alerta (`modules/observability/rules/togglemaster-alerts.yaml`, via Helm values)
+  - Alertmanager com receivers Slack e PagerDuty
 
 Tempo estimado: ~15 minutos (os Helm charts de observabilidade levam alguns minutos)
+
+O workflow de addons tambem dispara automaticamente em push que altere `addons/**` ou `modules/observability/**`
+(editar regras de alerta, dashboard ou config do OTel Collector aplica a mudanca via `terraform apply`).
 
 ### Secrets necessarios para a stack de observabilidade
 
@@ -94,15 +110,24 @@ gh secret set SLACK_WEBHOOK_URL --body "<webhook>" --repo alissonmota-am/toggle-
 gh secret set PAGERDUTY_ROUTING_KEY --body "<key>" --repo alissonmota-am/toggle-master-infra
 ```
 
+Para a demo da Fase 4, os valores precisam ser reais (nao placeholder):
+- `NEW_RELIC_LICENSE_KEY`: Ingest License Key da conta New Relic (sem ela os traces nao aparecem no APM)
+- `SLACK_WEBHOOK_URL`: Incoming Webhook do canal `#toggle-master-alerts`
+- `PAGERDUTY_ROUTING_KEY`: Integration Key (Events API v2) de um servico no PagerDuty
+
 ### Validar stack de observabilidade
 
 ```bash
 kubectl get pods -n observability
-# Pegar URL do Grafana
+# Pegar URL do Grafana (usuario: admin, senha: secret GRAFANA_ADMIN_PASSWORD)
 kubectl get svc -n observability kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 # Confirmar que o OTel Collector esta Running
 kubectl get pods -n observability -l app=otel-collector
+# Confirmar que as regras de alerta foram carregadas
+kubectl get prometheusrules -n observability
 ```
+
+No Grafana, o dashboard aparece em Dashboards, e o datasource Loki em Connections > Data sources.
 
 ### 3.1 Criar secret de credenciais AWS no cluster
 
@@ -171,6 +196,11 @@ O push de codigo nos microsservicos dispara automaticamente:
 1. **GitHub Actions** → build da imagem + push pro ECR + atualiza tag no `k8s/deployment.yaml`
 2. **ArgoCD** → detecta mudanca no `k8s/` → aplica no cluster
 
+Os servicos estao instrumentados com OpenTelemetry (Fase 4). Os pods enviam traces para o OTel Collector
+(`otel-collector.observability.svc.cluster.local:4317`, configurado nos ConfigMaps via `OTEL_*`).
+Se o Collector nao estiver acessivel, os servicos sobem normalmente, apenas sem telemetria. Por isso a ordem
+recomendada e instalar os addons (passo 3) antes dos servicos.
+
 Para forcar build sem alterar codigo:
 
 ```bash
@@ -228,6 +258,28 @@ curl -X POST http://$NLB/flags \
 curl "http://$NLB/evaluate?user_id=user-123&flag_name=enable-dashboard"
 ```
 
+## 8.1 Validar Observabilidade e Self-Healing (Fase 4)
+
+Gerar trafego para produzir traces, metricas e logs:
+
+```bash
+for i in $(seq 1 30); do curl -s "http://$NLB/evaluate?user_id=user-$i&flag_name=enable-dashboard" > /dev/null; done
+```
+
+- **Traces:** New Relic > APM & Services > Service Map / Distributed tracing (precisa da `NEW_RELIC_LICENSE_KEY` real)
+- **Metricas e logs:** dashboard do Grafana; logs no Explore com `{namespace="auth-service"}`
+- **Alertas:** Prometheus/Alertmanager (`kubectl get prometheusrules -n observability`)
+
+Self-Healing (workflow `self-healing.yml` no repo toggle-master-infra), teste manual:
+
+```bash
+gh workflow run self-healing.yml --repo alissonmota-am/toggle-master-infra \
+  -f service=auth-service -f namespace=auth-service
+```
+
+O disparo automatico usa `repository_dispatch` (tipo `self-healing`) chamado pelo PagerDuty via webhook, o que exige
+um GitHub PAT com escopo `repo` configurado no PagerDuty. Detalhes e roteiro de demonstracao em `ROTEIRO-FASE4-OBSERVABILIDADE.md`.
+
 ## 9. Forcar Sync dos External Secrets
 
 Se um secret foi criado/atualizado no Secrets Manager e o pod nao atualizou (refresh interval de 1h):
@@ -264,3 +316,5 @@ No repositorio toggle-master-infra:
 - O External Secrets Operator tem `refreshInterval: 1h`. Usar annotation `force-sync` pra forcar.
 - O Metrics Server pode nao funcionar no AWS Academy (limitacao de certificados kubelet).
 - O `SERVICE_API_KEY` do evaluation-service e um passo manual pos-deploy (depende do auth-service estar rodando).
+- A stack de observabilidade consome memoria (Prometheus principalmente). Com 2 nodes `t3.medium` cabe, mas para a gravacao do video considere subir `eks_node_desired_size` para 3.
+- Para destruir tudo localmente: `terraform destroy` em `addons/` e depois em `platform/` (mesma ordem do workflow de destroy). O bucket de state e mantido.

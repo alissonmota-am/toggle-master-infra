@@ -1,0 +1,111 @@
+groups:
+  # ---------------------------------------------------------------------------
+  # Grupo 1: Taxa de Erros HTTP 5xx
+  # ---------------------------------------------------------------------------
+  - name: togglemaster.http.errors
+    rules:
+      - alert: AuthServiceHighErrorRate
+        expr: |
+          (
+            sum(rate(http_server_duration_milliseconds_count{service_name="auth-service", http_status_code=~"5.."}[5m]))
+            /
+            sum(rate(http_server_duration_milliseconds_count{service_name="auth-service"}[5m]))
+          ) * 100 > 5
+        for: 2m
+        labels:
+          severity: critical
+          service: auth-service
+          namespace: auth-service
+        annotations:
+          summary: "Taxa de erros 5xx alta no auth-service"
+          description: "Auth-service com taxa de erros HTTP 5xx acima de 5% nos ultimos 2 minutos (atual: {{ $value | printf \"%.1f\" }}%)"
+          runbook_url: "https://github.com/alissonmota-am/toggle-master-infra/actions/workflows/self-healing.yml"
+
+      - alert: EvaluationServiceHighErrorRate
+        expr: |
+          (
+            sum(rate(http_server_duration_milliseconds_count{service_name="evaluation-service", http_status_code=~"5.."}[5m]))
+            /
+            sum(rate(http_server_duration_milliseconds_count{service_name="evaluation-service"}[5m]))
+          ) * 100 > 5
+        for: 2m
+        labels:
+          severity: critical
+          service: evaluation-service
+          namespace: evaluation-service
+        annotations:
+          summary: "Taxa de erros 5xx alta no evaluation-service"
+          description: "Evaluation-service com taxa de erros HTTP 5xx acima de 5% nos ultimos 2 minutos (atual: {{ $value | printf \"%.1f\" }}%)"
+          runbook_url: "https://github.com/alissonmota-am/toggle-master-infra/actions/workflows/self-healing.yml"
+
+      - alert: FlagServiceHighErrorRate
+        expr: |
+          (
+            sum(rate(http_server_duration_milliseconds_count{service_name="flag-service", http_status_code=~"5.."}[5m]))
+            /
+            sum(rate(http_server_duration_milliseconds_count{service_name="flag-service"}[5m]))
+          ) * 100 > 5
+        for: 2m
+        labels:
+          severity: critical
+          service: flag-service
+          namespace: flag-service
+        annotations:
+          summary: "Taxa de erros 5xx alta no flag-service"
+          description: "Flag-service com taxa de erros HTTP 5xx acima de 5% nos ultimos 2 minutos (atual: {{ $value | printf \"%.1f\" }}%)"
+          runbook_url: "https://github.com/alissonmota-am/toggle-master-infra/actions/workflows/self-healing.yml"
+
+  # ---------------------------------------------------------------------------
+  # Grupo 2: Disponibilidade (Pod Down)
+  # ---------------------------------------------------------------------------
+  - name: togglemaster.availability
+    rules:
+      - alert: ToggleMasterPodDown
+        expr: |
+          kube_deployment_status_replicas_available{namespace=~"auth-service|flag-service|targeting-service|evaluation-service|analytics-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Servico {{ $labels.deployment }} sem replicas disponiveis"
+          description: "O deployment {{ $labels.deployment }} no namespace {{ $labels.namespace }} esta com 0 replicas disponiveis ha mais de 1 minuto."
+          runbook_url: "https://github.com/alissonmota-am/toggle-master-infra/actions/workflows/self-healing.yml"
+
+  # ---------------------------------------------------------------------------
+  # Grupo 3: Latencia Alta
+  # ---------------------------------------------------------------------------
+  - name: togglemaster.latency
+    rules:
+      - alert: EvaluationServiceHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_server_duration_milliseconds_bucket{service_name="evaluation-service"}[5m])) by (le)
+          ) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: evaluation-service
+          namespace: evaluation-service
+        annotations:
+          summary: "Latencia alta no evaluation-service (p95)"
+          description: "Evaluation-service com p95 de latencia acima de 1s nos ultimos 5 minutos (atual: {{ $value | printf \"%.0f\" }}ms)"
+          runbook_url: "https://github.com/alissonmota-am/toggle-master-infra/actions/workflows/self-healing.yml"
+
+  # ---------------------------------------------------------------------------
+  # Grupo 4: Uso de Recursos
+  # ---------------------------------------------------------------------------
+  - name: togglemaster.resources
+    rules:
+      - alert: ToggleMasterHighMemoryUsage
+        expr: |
+          (
+            container_memory_working_set_bytes{namespace=~"auth-service|flag-service|targeting-service|evaluation-service|analytics-service", container!=""}
+            /
+            kube_pod_container_resource_limits{namespace=~"auth-service|flag-service|targeting-service|evaluation-service|analytics-service", resource="memory", container!=""}
+          ) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso de memoria alto em {{ $labels.container }}"
+          description: "Container {{ $labels.container }} no namespace {{ $labels.namespace }} usando mais de 85% do limite de memoria (atual: {{ $value | printf \"%.1f\" }}%)"
