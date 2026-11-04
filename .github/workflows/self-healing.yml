@@ -9,6 +9,14 @@ name: Self-Healing - Rollout Restart
 # Tambem pode ser disparada manualmente (workflow_dispatch) para testes.
 
 on:
+  # O push abaixo existe apenas para REGISTRAR o workflow no GitHub: como a branch
+  # padrao (main) nao contem este arquivo, o GitHub so o conhece depois de uma
+  # execucao disparada por push em outra branch. O job e pulado nesse caso
+  # (ver "if" do job), entao nenhuma acao corretiva e executada.
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/self-healing.yml'
   repository_dispatch:
     types: [self-healing]
   workflow_dispatch:
@@ -32,6 +40,8 @@ env:
 jobs:
   rollout-restart:
     name: Rollout Restart do Deployment
+    # Pula quando disparado por push (usado so para registrar o workflow)
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
 
     steps:
