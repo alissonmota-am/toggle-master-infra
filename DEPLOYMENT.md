@@ -101,8 +101,10 @@ Antes de rodar o workflow de addons, garantir que estes secrets existem no repos
 | `NEW_RELIC_LICENSE_KEY` | Ingest License Key da conta New Relic (sem ela os traces nao aparecem no APM) |
 | `SLACK_WEBHOOK_URL` | Incoming Webhook do canal `#toggle-master-alerts` |
 | `PAGERDUTY_ROUTING_KEY` | Integration Key de um servico no PagerDuty (aceita no endpoint Events API v2) |
+| `SELF_HEALING_GITHUB_TOKEN` | GitHub PAT (fine-grained, `Actions: Read and write` em `toggle-master-infra`) que a Lambda usa para disparar o workflow |
+| `SELF_HEALING_WEBHOOK_TOKEN` | Token compartilhado entre o Alertmanager e a Lambda, protege a Function URL publica |
 
-Os quatro secrets ja estao configurados com valores reais no repositorio e **nao precisam ser recriados** ao subir o
+Esses seis secrets ja estao configurados com valores reais no repositorio e **nao precisam ser recriados** ao subir o
 ambiente de novo, pois pertencem ao repositorio e nao ao cluster. So os secrets `AWS_*` expiram (sessao do Academy)
 e precisam ser atualizados a cada sessao (ver 1.1).
 
@@ -270,17 +272,29 @@ for i in $(seq 1 30); do curl -s "http://$NLB/evaluate?user_id=user-$i&flag_name
 - **Metricas e logs:** dashboard do Grafana; logs no Explore com `{namespace="auth-service"}`
 - **Alertas:** Prometheus/Alertmanager (`kubectl get prometheusrules -n observability`)
 
-Self-Healing (workflow `self-healing.yml` no repo toggle-master-infra), teste manual:
+**Self-Healing.** O fluxo automatico e: Prometheus dispara o alerta critical -> Alertmanager
+notifica Slack, abre incidente no PagerDuty e chama a Lambda (`modules/self_healing`, funcao
+`toggle-master-self-healing`) -> a Lambda dispara o workflow `self-healing.yml` -> o workflow
+roda `kubectl rollout restart` no servico afetado. A Lambda e usada porque o trial do PagerDuty
+nao habilita Incident Workflows (a ponte do PagerDuty para o GitHub).
+
+Teste manual, do mais completo ao mais direto:
 
 ```bash
+# 1) Simular o webhook do Alertmanager chamando a Lambda (ponta a ponta)
+#    FUNCTION_URL: terraform output -raw function_url no modulo self_healing
+#    O token e o secret SELF_HEALING_WEBHOOK_TOKEN
+curl -X POST "$FUNCTION_URL" \
+  -H "Authorization: Bearer $SELF_HEALING_WEBHOOK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"alerts":[{"status":"firing","labels":{"alertname":"AuthServiceHighErrorRate","severity":"critical","service":"auth-service"}}]}'
+
+# 2) Disparar o workflow direto, sem passar pela Lambda
 gh workflow run self-healing.yml --repo alissonmota-am/toggle-master-infra \
   -f service=auth-service -f namespace=auth-service
 ```
 
-O disparo automatico e feito pelo PagerDuty (Incident Workflow, acao "Send POST Request") chamando a API REST
-`POST /repos/alissonmota-am/toggle-master-infra/actions/workflows/self-healing.yml/dispatches` com `ref=develop`.
-Isso exige um GitHub PAT configurado no PagerDuty. Nao se usa `repository_dispatch`, porque a branch padrao (`main`)
-nao contem o workflow. Detalhes e roteiro de demonstracao em `ROTEIRO-FASE4-OBSERVABILIDADE.md`.
+Detalhes e roteiro de demonstracao em `ROTEIRO-FASE4-OBSERVABILIDADE.md`.
 
 ## 9. Forcar Sync dos External Secrets
 
@@ -320,3 +334,6 @@ No repositorio toggle-master-infra:
 - O `SERVICE_API_KEY` do evaluation-service e um passo manual pos-deploy (depende do auth-service estar rodando).
 - A stack de observabilidade consome memoria (Prometheus principalmente). Com 2 nodes `t3.medium` cabe, mas para a gravacao do video considere subir `eks_node_desired_size` para 3.
 - Para destruir tudo localmente: `terraform destroy` em `addons/` e depois em `platform/` (mesma ordem do workflow de destroy). O bucket de state e mantido.
+
+
+SELF_HEALING_WEBHOOK_TOKEN: nx7d5TMLr3AxlcyLjpMr24_gMXzD6UKQsUAP-PfrzLU (guarde)
