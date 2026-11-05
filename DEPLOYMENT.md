@@ -386,7 +386,18 @@ No repositorio toggle-master-infra:
 - Credenciais do AWS Academy expiram em ~4 horas. Rodar `./update-secrets.sh` e recriar o secret `aws-credentials` no cluster.
 - O ArgoCD faz polling a cada ~3 minutos. Mudancas no `k8s/` podem levar ate 3 min pra refletir.
 - O External Secrets Operator tem `refreshInterval: 1h`. Usar annotation `force-sync` pra forcar.
-- O Metrics Server pode nao funcionar no AWS Academy (limitacao de certificados kubelet).
+- **`tls: internal error` no kubelet** (`kubectl logs/exec/port-forward` falhando, painéis de CPU/memória vazios,
+  Metrics Server sem dados): a causa era uma access entry `STANDARD` para a `LabRole`, que no Academy é também a role
+  dos nodes. Ela fazia o EKS tratar o kubelet como usuário comum e não emitir o certificado `kubelet-serving`. O módulo
+  `eks` não cria mais essa entry. Se o sintoma aparecer num cluster antigo: `aws eks delete-access-entry --cluster-name
+  toggle-master-dev-cluster --principal-arn arn:aws:iam::533267294133:role/LabRole` (o acesso admin vem da `voclabs`);
+  em ~15 min os nodes abrem CSRs novos já como `system:node:*` e o EKS os assina sozinho.
+- **Pods sem credencial AWS** (`NoCredentialProviders` no evaluation, `Unable to locate credentials` no analytics):
+  os nodes precisam de IMDS com hop limit 2. O módulo `eks` define isso via launch template. Num cluster antigo:
+  `aws ec2 modify-instance-metadata-options --instance-id <id> --http-put-response-hop-limit 2 --http-tokens required`
+  em cada node e depois `kubectl rollout restart` do evaluation e do analytics.
+- Adicionar o launch template a um node group existente força a **substituição** do node group. Não rode o workflow do
+  `platform` com o cluster no ar só para isso: os pods caem até os nodes novos subirem.
 - O `SERVICE_API_KEY` do evaluation-service e um passo manual pos-deploy (depende do auth-service estar rodando).
 - A stack de observabilidade consome memoria (Prometheus principalmente). Com 2 nodes `t3.medium` cabe, mas para a gravacao do video considere subir `eks_node_desired_size` para 3.
 - Para destruir tudo localmente: `terraform destroy` em `addons/` e depois em `platform/` (mesma ordem do workflow de destroy). O bucket de state e mantido.
