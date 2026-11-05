@@ -178,19 +178,75 @@ Tempo estimado: ~10-15 minutos por RDS, ~5 minutos para Redis/SQS
 
 ## 5. Inicializar Bancos de Dados
 
-Conectar na instancia EC2 bastion (via Session Manager) que tem acesso a VPC e executar os scripts de init:
+Os bancos (auth, flag, targeting) nascem vazios. E preciso rodar o `db/init.sql` de cada
+servico uma vez por recriacao. Os RDS ficam em subnets privadas, entao a conexao parte de
+dentro do cluster.
+
+**Pre-requisito:** os ExternalSecrets ja materializados (o Secret `<svc>-service-secret` existe
+no namespace), pois a `DATABASE_URL` vem dele. Ver passo 3.1 e 3.2.
+
+### Metodo recomendado: Job no cluster (nao depende de bastion)
+
+Roda um `psql` como Job em cada namespace, lendo o `init.sql` de um ConfigMap e a
+`DATABASE_URL` do Secret do servico. O resultado e lido pelo **status do Job** (via API
+server), o que e util quando o kubelet esta instavel e bloqueia `kubectl logs/exec`
+(comum no AWS Academy, erro `tls: internal error`).
 
 ```bash
-# Instalar cliente PostgreSQL (se necessario)
-sudo yum install -y postgresql15
+# 1) ConfigMap com o init.sql de cada servico (os repos estao clonados localmente)
+for svc in auth flag targeting; do
+  kubectl create configmap ${svc}-initsql -n ${svc}-service \
+    --from-file=init.sql=../${svc}-service/db/init.sql \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
 
-# Executar scripts de schema
+# 2) Job que executa o psql (repetir o bloco trocando NS/CM/SECRET por servico,
+#    ou usar o manifesto multi-Job que aplica os 3 de uma vez)
+cat <<'EOF' | kubectl apply -f -
+apiVersion: batch/v1
+kind: Job
+metadata: { name: db-init, namespace: auth-service }
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: psql
+          image: postgres:15-alpine
+          command: ["sh","-c","psql \"$PGURL\" -v ON_ERROR_STOP=1 -f /sql/init.sql"]
+          env:
+            - name: PGURL
+              valueFrom: { secretKeyRef: { name: auth-service-secret, key: DATABASE_URL } }
+          volumeMounts: [{ name: sql, mountPath: /sql }]
+      volumes: [{ name: sql, configMap: { name: auth-initsql } }]
+EOF
+# (repetir para flag-service/flag-initsql/flag-service-secret e
+#  targeting-service/targeting-initsql/targeting-service-secret)
+
+# 3) Conferir sucesso (sem depender de logs)
+for ns in auth-service flag-service targeting-service; do
+  echo "$ns: $(kubectl get job db-init -n $ns -o jsonpath='{.status.succeeded}')"
+done   # 1 = sucesso
+
+# 4) Limpar
+for ns in auth-service flag-service targeting-service; do
+  kubectl delete job db-init -n $ns
+  kubectl delete configmap ${ns%%-service}-initsql -n $ns
+done
+```
+
+### Alternativa: bastion EC2 (Session Manager)
+
+```bash
+sudo yum install -y postgresql15
 psql -h auth-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d auth_db -f auth-service/db/init.sql
 psql -h flag-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d flag_db -f flag-service/db/init.sql
 psql -h targeting-service-dev-db.<RDS_SUFFIX>.us-east-1.rds.amazonaws.com -U fiap -d targeting_db -f targeting-service/db/init.sql
 ```
 
-Substituir `<RDS_SUFFIX>` pelo sufixo real do endpoint (visivel nos outputs do Terraform ou no console RDS).
+Substituir `<RDS_SUFFIX>` pelo sufixo real do endpoint (output do Terraform ou console RDS).
 
 ## 6. Builds e Deploy (Automatico)
 
