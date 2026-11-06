@@ -430,13 +430,167 @@
       ]
     },
     {
+      "type": "timeseries",
+      "title": "Requisicoes HTTP por status code (por servico)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "id": 9,
+      "description": "Taxa de requisicoes por servico e codigo HTTP (label http_status_code da metrica http.server.duration). Durante o incidente aparece a serie auth-service 500.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* 5\\d\\d$"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* 4\\d\\d$"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(http_server_duration_milliseconds_count[5m])) by (service_name, http_status_code)",
+          "legendFormat": "{{service_name}} {{http_status_code}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Taxa de erro 5xx (%) - limite do alerta: 5%",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "id": 10,
+      "description": "Mesma conta das regras *HighErrorRate: 5xx / total em janela de 5 min, x100. Acima de 5% por 2 min o alerta dispara (critical -> PagerDuty, Slack e self-healing).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (service_name) (rate(http_server_duration_milliseconds_count{http_status_code=~\"5..\"}[5m])) or (sum by (service_name) (rate(http_server_duration_milliseconds_count[5m])) * 0)) / sum by (service_name) (rate(http_server_duration_milliseconds_count[5m])) * 100",
+          "legendFormat": "{{service_name}}"
+        }
+      ]
+    },
+    {
       "type": "row",
       "title": "Logs em Tempo Real (Loki)",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 32
       },
       "id": 102,
       "collapsed": false,
@@ -453,7 +607,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 33
       },
       "id": 8,
       "options": {
