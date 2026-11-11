@@ -91,10 +91,6 @@ variable "environment" {
 }
 
 # Self-Healing (Lambda)
-variable "lab_role_arn" {
-  description = "ARN da LabRole do AWS Academy, usada como role de execucao da Lambda"
-  type        = string
-}
 
 variable "self_healing_github_token" {
   description = "GitHub PAT usado pela Lambda para disparar o workflow de self-healing"

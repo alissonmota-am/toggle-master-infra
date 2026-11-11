@@ -2,11 +2,12 @@
 
 ## Pre-requisitos
 
-- Conta AWS Academy ativa com sessao iniciada
+- AWS CLI configurada (perfil `default`) com um usuario IAM com permissao para criar VPC, EKS, IAM, RDS, ElastiCache, SQS, DynamoDB e Lambda (ex.: `AdministratorAccess`). Conferir com `aws sts get-caller-identity`
 - Bucket S3 `toggle-master-terraform-state-<ACCOUNT_ID>` criado (bootstrap manual, feito uma vez)
-  - Account ID atual: `533267294133`
-  - Criar com: `aws s3api create-bucket --bucket toggle-master-terraform-state-533267294133 --region us-east-1`
-  - Habilitar versionamento: `aws s3api put-bucket-versioning --bucket toggle-master-terraform-state-533267294133 --versioning-configuration Status=Enabled`
+  - Account ID atual: `344258592914`
+  - Criar com: `aws s3api create-bucket --bucket toggle-master-terraform-state-344258592914 --region us-east-1`
+  - Habilitar versionamento: `aws s3api put-bucket-versioning --bucket toggle-master-terraform-state-344258592914 --versioning-configuration Status=Enabled`
+  - Bloquear acesso publico: `aws s3api put-public-access-block --bucket toggle-master-terraform-state-344258592914 --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true`
   - O account ID e fixo em todos os repositorios (ver "Conta AWS" abaixo)
 - Repositorios GitHub com branch `develop` atualizada
 - GitHub CLI (`gh`) autenticado localmente
@@ -14,7 +15,7 @@
 
 ### Conta AWS
 
-Todos os repositorios (infra e os 5 servicos) estao alinhados com a conta `533267294133`: bucket de state, `ECR_REGISTRY`
+Todos os repositorios (infra e os 5 servicos) estao alinhados com a conta `344258592914`: bucket de state, `ECR_REGISTRY`
 dos builds, `image:` dos deployments e `AWS_SQS_URL` dos ConfigMaps. Se a conta mudar um dia, localizar todas as
 ocorrencias com `grep -rn "<ACCOUNT_ID_ANTIGO>" --include="*.yml" --include="*.yaml" --include="*.tf" --include="*.tfvars" .`
 
@@ -26,13 +27,13 @@ no ConfigMap deve corresponder a ele.
 
 ### 1.1 Atualizar credenciais AWS (todos os repos)
 
-Atualizar o arquivo `~/.aws/credentials` com as novas credenciais do Academy e rodar:
+Garantir que o perfil `default` da AWS CLI aponta para o usuario IAM do projeto e rodar (aceita outro perfil como argumento):
 
 ```bash
 ./update-secrets.sh
 ```
 
-Isso atualiza `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e `AWS_SESSION_TOKEN` nos 6 repositorios.
+Isso atualiza `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` nos 6 repositorios e remove o antigo `AWS_SESSION_TOKEN` (as chaves do usuario IAM sao permanentes).
 
 ### 1.2 Secrets adicionais (configurar uma vez)
 
@@ -55,14 +56,14 @@ Recursos criados:
 - VPC (subnets publicas/privadas, NAT, IGW)
 - EKS Cluster + Node Group
 - ECR (5 repositorios de imagens)
-- Access Entries (LabRole + voclabs)
+- Roles IAM do cluster e dos nodes (modulo `iam`) e Access Entry de admin para o usuario IAM (`eks_admin_principal_arn`)
 
 Tempo estimado: ~15-20 minutos
 
 ### 2.1 Validar cluster
 
 ```bash
-aws eks update-kubeconfig --name toggle-master-dev-cluster --region us-east-1 --profile academy
+aws eks update-kubeconfig --name toggle-master-dev-cluster --region us-east-1
 kubectl get nodes
 ```
 
@@ -105,8 +106,8 @@ Antes de rodar o workflow de addons, garantir que estes secrets existem no repos
 | `SELF_HEALING_WEBHOOK_TOKEN` | Token compartilhado entre o Alertmanager e a Lambda, protege a Function URL publica |
 
 Esses seis secrets ja estao configurados com valores reais no repositorio e **nao precisam ser recriados** ao subir o
-ambiente de novo, pois pertencem ao repositorio e nao ao cluster. So os secrets `AWS_*` expiram (sessao do Academy)
-e precisam ser atualizados a cada sessao (ver 1.1).
+ambiente de novo, pois pertencem ao repositorio e nao ao cluster. Os secrets `AWS_*` so precisam ser atualizados
+se a access key do usuario IAM for trocada (ver 1.1).
 
 Para conferir ou trocar algum valor:
 ```bash
@@ -136,13 +137,14 @@ No Grafana, o dashboard aparece em Dashboards, e o datasource Loki em Connection
 O External Secrets Operator precisa de credenciais pra acessar o Secrets Manager:
 
 ```bash
-AWS_PROFILE=academy kubectl create secret generic aws-credentials -n external-secrets \
-  --from-literal=access-key=$(awk '/\[academy\]/,0' ~/.aws/credentials | grep aws_access_key_id | head -1 | cut -d= -f2 | tr -d ' ') \
-  --from-literal=secret-access-key="$(awk '/\[academy\]/,0' ~/.aws/credentials | grep aws_secret_access_key | head -1 | cut -d= -f2- | tr -d ' ')" \
-  --from-literal=session-token="$(awk '/\[academy\]/,0' ~/.aws/credentials | grep aws_session_token | head -1 | cut -d= -f2- | tr -d ' ')"
+kubectl create secret generic aws-credentials -n external-secrets \
+  --from-literal=access-key="$(aws configure get aws_access_key_id)" \
+  --from-literal=secret-access-key="$(aws configure get aws_secret_access_key)"
 ```
 
-**Nota:** Esse secret precisa ser recriado quando a sessao do Academy expirar.
+**Nota:** as chaves sao permanentes, entao o secret so precisa ser recriado se a access key for trocada.
+Considere criar um usuario IAM dedicado ao External Secrets, com permissao somente de leitura no Secrets Manager
+(`secretsmanager:GetSecretValue` e `DescribeSecret`), em vez de reutilizar o usuario administrador.
 
 ### 3.2 Validar addons
 
@@ -190,7 +192,7 @@ no namespace), pois a `DATABASE_URL` vem dele. Ver passo 3.1 e 3.2.
 Roda um `psql` como Job em cada namespace, lendo o `init.sql` de um ConfigMap e a
 `DATABASE_URL` do Secret do servico. O resultado e lido pelo **status do Job** (via API
 server), o que e util quando o kubelet esta instavel e bloqueia `kubectl logs/exec`
-(comum no AWS Academy, erro `tls: internal error`).
+(erro `tls: internal error`).
 
 ```bash
 # 1) ConfigMap com o init.sql de cada servico (os repos estao clonados localmente)
@@ -288,8 +290,7 @@ echo "API Key: $API_KEY"
 aws secretsmanager create-secret \
   --name evaluation-service-dev/service-api-key \
   --secret-string "$API_KEY" \
-  --region us-east-1 \
-  --profile academy
+  --region us-east-1
 ```
 
 Depois, atualizar o ExternalSecret do evaluation-service para incluir `SERVICE_API_KEY` e forcar sync:
@@ -383,17 +384,15 @@ No repositorio toggle-master-infra:
 
 ## Notas Importantes
 
-- Credenciais do AWS Academy expiram em ~4 horas. Rodar `./update-secrets.sh` e recriar o secret `aws-credentials` no cluster.
+- As credenciais sao chaves permanentes do usuario IAM. Se trocar a access key, rodar `./update-secrets.sh` e recriar o secret `aws-credentials` no cluster.
 - O ArgoCD faz polling a cada ~3 minutos. Mudancas no `k8s/` podem levar ate 3 min pra refletir.
 - O External Secrets Operator tem `refreshInterval: 1h`. Usar annotation `force-sync` pra forcar.
-- **`tls: internal error` no kubelet** (`kubectl logs/exec/port-forward` falhando, painéis de CPU/memória vazios,
-  Metrics Server sem dados): a causa era uma access entry `STANDARD` para a `LabRole`, que no Academy é também a role
-  dos nodes. Ela fazia o EKS tratar o kubelet como usuário comum e não emitir o certificado `kubelet-serving`. O módulo
-  `eks` não cria mais essa entry. Se o sintoma aparecer num cluster antigo: `aws eks delete-access-entry --cluster-name
-  toggle-master-dev-cluster --principal-arn arn:aws:iam::533267294133:role/LabRole` (o acesso admin vem da `voclabs`);
-  em ~15 min os nodes abrem CSRs novos já como `system:node:*` e o EKS os assina sozinho.
+- **`tls: internal error` no kubelet** (`kubectl logs/exec/port-forward` falhando, paineis de CPU/memoria vazios,
+  Metrics Server sem dados): ocorre se a role dos nodes tiver uma access entry `STANDARD` (admin). O modulo `eks` nao
+  cria essa entry; o node group gerenciado cria sozinho a `EC2_LINUX`. Se o sintoma aparecer, conferir com
+  `aws eks list-access-entries --cluster-name toggle-master-dev-cluster` e remover a entry `STANDARD` da role dos nodes.
 - **Pods sem credencial AWS** (`NoCredentialProviders` no evaluation, `Unable to locate credentials` no analytics):
-  os nodes precisam de IMDS com hop limit 2. O módulo `eks` define isso via launch template. Num cluster antigo:
+  os nodes precisam de IMDS com hop limit 2 (o módulo `eks` define isso via launch template) e a role dos nodes precisa das permissões de SQS/DynamoDB (módulo `iam`). Num cluster antigo:
   `aws ec2 modify-instance-metadata-options --instance-id <id> --http-put-response-hop-limit 2 --http-tokens required`
   em cada node e depois `kubectl rollout restart` do evaluation e do analytics.
 - Adicionar o launch template a um node group existente força a **substituição** do node group. Não rode o workflow do

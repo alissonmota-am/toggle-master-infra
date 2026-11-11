@@ -32,7 +32,7 @@ resource "aws_security_group_rule" "kubelet" {
 resource "aws_eks_cluster" "this" {
   name     = "${var.project_name}-cluster"
   version  = var.cluster_version
-  role_arn = var.role_arn
+  role_arn = var.cluster_role_arn
 
   vpc_config {
     subnet_ids         = var.subnet_ids
@@ -40,7 +40,8 @@ resource "aws_eks_cluster" "this" {
   }
 
   access_config {
-    authentication_mode = "API_AND_CONFIG_MAP"
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = false
   }
 
   tags = {
@@ -49,39 +50,34 @@ resource "aws_eks_cluster" "this" {
 }
 
 ################################################################################
-# LabRole: SEM access entry STANDARD (de proposito)
+# EKS Access Entry - acesso administrativo ao cluster
 #
-# No AWS Academy a LabRole e a role do cluster E dos nodes. Um principal so pode
-# ter UMA access entry; uma entry STANDARD (admin) faz o EKS tratar o kubelet como
-# usuario comum, em vez de system:node:*. Consequencia: o signer do EKS nao emite
-# o certificado kubelet-serving, e kubectl logs/exec/port-forward e o scrape do
-# kubelet pelo Prometheus falham com "tls: internal error".
+# O cluster usa uma role propria para o control plane e outra para os nodes
+# (modulo iam). O node group gerenciado cria sozinho a access entry EC2_LINUX da
+# role dos nodes, entao o kubelet e tratado como system:node:* e os certificados
+# kubelet-serving sao emitidos (kubectl logs/exec e scrape do Prometheus funcionam).
 #
-# Sem a entry STANDARD, o node group gerenciado registra a LabRole como node
-# (EC2_LINUX / aws-auth: system:node:{{EC2PrivateDNSName}}, grupo system:nodes) e
-# os certificados sao emitidos automaticamente. O acesso administrativo ao
-# cluster vem da voclabs (entry abaixo), que e quem roda kubectl e os workflows.
+# O admin explicito abaixo e o principal usado pelo kubectl e pelos workflows
+# (o usuario IAM das chaves AWS_* do GitHub Actions). Como
+# bootstrap_cluster_creator_admin_permissions = false, nao ha entry duplicada
+# para quem criou o cluster.
 ################################################################################
-
-################################################################################
-# EKS Access Entry — permite voclabs (AWS Academy) acessar o cluster
-################################################################################
-resource "aws_eks_access_entry" "voclabs" {
+resource "aws_eks_access_entry" "admin" {
   cluster_name  = aws_eks_cluster.this.name
-  principal_arn = var.voclabs_role_arn
+  principal_arn = var.admin_principal_arn
   type          = "STANDARD"
 }
 
-resource "aws_eks_access_policy_association" "voclabs" {
+resource "aws_eks_access_policy_association" "admin" {
   cluster_name  = aws_eks_cluster.this.name
-  principal_arn = var.voclabs_role_arn
+  principal_arn = var.admin_principal_arn
   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 
   access_scope {
     type = "cluster"
   }
 
-  depends_on = [aws_eks_access_entry.voclabs]
+  depends_on = [aws_eks_access_entry.admin]
 }
 
 ################################################################################
@@ -90,8 +86,8 @@ resource "aws_eks_access_policy_association" "voclabs" {
 # Com hop limit 1 (padrao), pods nao alcancam o IMDS do node e ficam sem
 # credenciais AWS (o evaluation/analytics falham no SQS/DynamoDB com
 # "NoCredentialProviders"/"Unable to locate credentials"). Hop limit 2 permite
-# que os pods usem a role do node (LabRole). No AWS Academy nao e possivel criar
-# roles por servico (IRSA/Pod Identity), entao esta e a alternativa viavel.
+# que os pods usem a role do node (permissoes de SQS/DynamoDB no modulo iam).
+# Uma evolucao possivel e usar Pod Identity/IRSA com uma role por servico.
 #
 # Nao define AMI, tipo de instancia nem security groups: o EKS continua usando a
 # AMI otimizada e anexando o SG do cluster.
@@ -119,7 +115,7 @@ resource "aws_launch_template" "nodes" {
 resource "aws_eks_node_group" "this" {
   cluster_name    = aws_eks_cluster.this.name
   node_group_name = "${var.project_name}-nodes"
-  node_role_arn   = var.role_arn
+  node_role_arn   = var.node_role_arn
   subnet_ids      = var.subnet_ids
   capacity_type   = var.node_capacity_type
   instance_types  = [var.node_instance_type]

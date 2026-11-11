@@ -10,6 +10,29 @@ data "archive_file" "lambda" {
 }
 
 ################################################################################
+# Role de execucao da Lambda (so escreve logs no CloudWatch)
+################################################################################
+data "aws_iam_policy_document" "assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "this" {
+  name               = "${var.function_name}-role"
+  assume_role_policy = data.aws_iam_policy_document.assume.json
+}
+
+resource "aws_iam_role_policy_attachment" "logs" {
+  role       = aws_iam_role.this.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+################################################################################
 # Logs
 ################################################################################
 resource "aws_cloudwatch_log_group" "this" {
@@ -23,7 +46,7 @@ resource "aws_cloudwatch_log_group" "this" {
 resource "aws_lambda_function" "this" {
   function_name = var.function_name
   description   = "Recebe o webhook do Alertmanager e dispara o workflow de self-healing no GitHub Actions"
-  role          = var.role_arn
+  role          = aws_iam_role.this.arn
   runtime       = "python3.12"
   handler       = "handler.handler"
   timeout       = 15
@@ -43,7 +66,7 @@ resource "aws_lambda_function" "this" {
     }
   }
 
-  depends_on = [aws_cloudwatch_log_group.this]
+  depends_on = [aws_cloudwatch_log_group.this, aws_iam_role_policy_attachment.logs]
 }
 
 ################################################################################

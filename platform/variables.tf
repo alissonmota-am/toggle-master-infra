@@ -60,8 +60,8 @@ variable "eks_node_capacity_type" {
   type        = string
 }
 
-variable "lab_role_arn" {
-  description = "ARN da IAM Role (LabRole no AWS Academy)"
+variable "eks_admin_principal_arn" {
+  description = "ARN do usuario/role IAM com acesso administrativo ao cluster EKS (kubectl e workflows)"
   type        = string
 }
 
@@ -69,9 +69,4 @@ variable "lab_role_arn" {
 variable "service_names" {
   description = "Lista de nomes dos microsservicos para criar repositorios ECR"
   type        = list(string)
-}
-
-variable "voclabs_role_arn" {
-  description = "ARN da role voclabs (AWS Academy)"
-  type        = string
 }

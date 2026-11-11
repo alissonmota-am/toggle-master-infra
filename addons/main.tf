@@ -59,7 +59,6 @@ module "observability" {
 module "self_healing" {
   source = "../modules/self_healing"
 
-  role_arn      = var.lab_role_arn
   github_token  = var.self_healing_github_token
   webhook_token = var.self_healing_webhook_token
 }

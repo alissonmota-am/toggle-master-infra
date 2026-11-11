@@ -1,7 +1,7 @@
 aws_region = "us-east-1"
 
 # Remote State da plataforma
-platform_state_bucket = "toggle-master-terraform-state-533267294133"
+platform_state_bucket = "toggle-master-terraform-state-344258592914"
 platform_state_key    = "platform/dev/terraform.tfstate"
 
 # Ingress Nginx
@@ -73,5 +73,3 @@ environment                         = "dev"
 # TF_VAR_pagerduty_routing_key
 # TF_VAR_self_healing_github_token
 # TF_VAR_self_healing_webhook_token
-# Self-Healing (role de execucao da Lambda)
-lab_role_arn = "arn:aws:iam::533267294133:role/LabRole"

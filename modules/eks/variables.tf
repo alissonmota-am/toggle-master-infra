@@ -18,8 +18,13 @@ variable "cluster_version" {
   type        = string
 }
 
-variable "role_arn" {
-  description = "ARN da IAM Role para o cluster e nodes"
+variable "cluster_role_arn" {
+  description = "ARN da IAM Role do control plane do EKS"
+  type        = string
+}
+
+variable "node_role_arn" {
+  description = "ARN da IAM Role dos nodes do EKS"
   type        = string
 }
 
@@ -48,7 +53,7 @@ variable "node_capacity_type" {
   type        = string
 }
 
-variable "voclabs_role_arn" {
-  description = "ARN da role voclabs (AWS Academy - usada pelas credenciais temporarias)"
+variable "admin_principal_arn" {
+  description = "ARN do usuario/role IAM com acesso administrativo ao cluster (kubectl e workflows)"
   type        = string
 }

@@ -4,11 +4,6 @@ variable "function_name" {
   default     = "toggle-master-self-healing"
 }
 
-variable "role_arn" {
-  description = "ARN da role de execucao da Lambda (no AWS Academy: LabRole, pois nao e possivel criar roles)"
-  type        = string
-}
-
 variable "github_token" {
   description = "GitHub PAT (fine-grained, Actions: Read and write no repositorio alvo) usado para disparar o workflow"
   type        = string
