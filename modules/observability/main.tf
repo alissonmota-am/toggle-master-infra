@@ -107,6 +107,15 @@ resource "helm_release" "kube_prometheus_stack" {
         "togglemaster-alerts" = yamldecode(file("${path.module}/rules/togglemaster-alerts.yaml"))
       }
     }),
+    # Grafana: acesso externo restrito (por padrao so a VPC). O IP do operador e
+    # liberado sob demanda por scripts/lb-access.sh (fora do Terraform).
+    yamlencode({
+      grafana = {
+        service = {
+          loadBalancerSourceRanges = var.lb_allowed_cidrs
+        }
+      }
+    }),
     # Alertmanager: rotas e receivers em arquivo proprio (alertmanager/config.yaml.tftpl).
     # Os alertas com team=togglemaster e severity=critical vao para o PagerDuty e o Slack;
     # os de severity=warning vao so para o Slack; o restante e descartado.

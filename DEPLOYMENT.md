@@ -157,6 +157,32 @@ kubectl get clustersecretstore
 
 O `ClusterSecretStore` deve estar `Valid` e `Ready: True`.
 
+### 3.3 Acesso externo aos load balancers (sob demanda, so o seu IP)
+
+Os 3 load balancers publicos (ingress-nginx/API, ArgoCD e Grafana) nascem acessiveis **somente pela VPC**
+(`lb_allowed_cidrs` em `addons/environments/<env>.tfvars`). Isso evita que bots e scanners explorem os endpoints.
+A restricao e feita pelo `loadBalancerSourceRanges` dos Services (security groups), sem custo extra.
+
+Para acessar de fora, libere o seu IP **sem pipeline**, direto no cluster:
+
+```bash
+cd toggle-master-infra
+./scripts/lb-access.sh open           # detecta seu IP publico e libera VPC + IP/32
+./scripts/lb-access.sh open 203.0.113.7   # ou informe o IP manualmente
+./scripts/lb-access.sh status         # mostra ranges e enderecos dos 3 LBs
+./scripts/lb-access.sh close          # volta para so a VPC (rode ao terminar)
+```
+
+Pontos de atencao:
+- A lista de ranges **nunca pode ficar vazia**: no Kubernetes vazio significa `0.0.0.0/0` (aberto para o mundo). O Terraform
+  recusa lista vazia e `0.0.0.0/0` (validation da variavel), e o script sempre mantem o CIDR da VPC.
+- Um apply do Terraform dos addons **nem sempre reverte** o `open`: o Helm so reaplica o campo se o valor no Terraform mudar.
+  Rode `close` ao terminar, e confira com `status`.
+- Se o seu IP mudar (rede, VPN, 4G), rode `open` de novo. Cada `open` substitui a lista anterior, nao acumula IPs.
+- O pipeline e o cluster nao dependem desses LBs: ArgoCD, Alertmanager, workflows e kubectl usam a rede interna ou a API do EKS.
+- Os LBs continuam existindo (e cobrando a hora fixa) mesmo fechados.
+- Depois do primeiro apply, validar o bloqueio de fora do seu IP (ex.: celular em 4G): a conexao deve dar timeout.
+
 ## 4. Criar Infraestrutura dos Microsservicos
 
 Disparar workflows de Terraform em cada servico:

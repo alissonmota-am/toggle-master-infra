@@ -19,4 +19,16 @@ resource "helm_release" "ingress_nginx" {
     name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-type"
     value = "nlb"
   }
+
+  # Acesso externo restrito: por padrao so a VPC. O IP do operador e liberado sob
+  # demanda por scripts/lb-access.sh (fora do Terraform).
+  values = [
+    yamlencode({
+      controller = {
+        service = {
+          loadBalancerSourceRanges = var.lb_allowed_cidrs
+        }
+      }
+    })
+  ]
 }

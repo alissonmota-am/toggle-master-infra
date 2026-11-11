@@ -73,3 +73,7 @@ environment                         = "dev"
 # TF_VAR_pagerduty_routing_key
 # TF_VAR_self_healing_github_token
 # TF_VAR_self_healing_webhook_token
+
+# Load balancers (ingress-nginx, ArgoCD, Grafana): so a propria VPC.
+# Para acessar de fora, libere o seu IP com scripts/lb-access.sh open.
+lb_allowed_cidrs = ["10.1.0.0/16"]

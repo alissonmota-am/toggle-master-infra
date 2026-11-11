@@ -53,3 +53,7 @@ argocd_applications = [
 
 # External Secrets
 external_secrets_chart_version = "0.9.20"
+
+# Load balancers (ingress-nginx, ArgoCD, Grafana): so a propria VPC.
+# Para acessar de fora, libere o seu IP com scripts/lb-access.sh open.
+lb_allowed_cidrs = ["10.0.0.0/16"]

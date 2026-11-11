@@ -26,6 +26,18 @@ resource "helm_release" "argocd" {
     name  = "configs.params.server\\.insecure"
     value = "true"
   }
+
+  # Acesso externo restrito: por padrao so a VPC. O IP do operador e liberado sob
+  # demanda por scripts/lb-access.sh (fora do Terraform).
+  values = [
+    yamlencode({
+      server = {
+        service = {
+          loadBalancerSourceRanges = var.lb_allowed_cidrs
+        }
+      }
+    })
+  ]
 }
 
 ################################################################################
@@ -56,7 +68,7 @@ resource "helm_release" "applications" {
           selfHeal = true
         }
       }
-    }}
+    } }
   })]
 
   depends_on = [helm_release.argocd]

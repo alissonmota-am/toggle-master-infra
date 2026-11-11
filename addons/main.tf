@@ -4,7 +4,8 @@
 module "ingress_nginx" {
   source = "../modules/ingress_nginx"
 
-  chart_version = var.ingress_nginx_chart_version
+  chart_version    = var.ingress_nginx_chart_version
+  lb_allowed_cidrs = var.lb_allowed_cidrs
 }
 
 ################################################################################
@@ -22,8 +23,9 @@ module "metrics_server" {
 module "argocd" {
   source = "../modules/argocd"
 
-  chart_version = var.argocd_chart_version
-  applications  = var.argocd_applications
+  chart_version    = var.argocd_chart_version
+  applications     = var.argocd_applications
+  lb_allowed_cidrs = var.lb_allowed_cidrs
 }
 
 ################################################################################
@@ -51,6 +53,7 @@ module "observability" {
   environment                         = var.environment
   self_healing_url                    = module.self_healing.function_url
   self_healing_webhook_token          = var.self_healing_webhook_token
+  lb_allowed_cidrs                    = var.lb_allowed_cidrs
 }
 
 ################################################################################
